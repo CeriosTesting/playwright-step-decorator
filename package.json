@@ -1,6 +1,6 @@
 {
 	"name": "@cerios/playwright-step-decorator",
-	"version": "0.0.0",
+	"version": "1.0.0",
 	"author": "Ronald Veth - Cerios",
 	"description": "A Playwright decorator for creating step-based tests",
 	"license": "MIT",
@@ -25,7 +25,8 @@
 		"build": "tsup",
 		"check-exports": "attw --pack .",
 		"changeset": "npx changeset",
-		"local-release": "changeset version && changeset publish",
+		"changeset:version": "changeset version",
+		"changeset:publish": "changeset publish",
 		"compile": "tsc --noEmit",
 		"update-all-packages": "npx npm-check-updates -u && npm i"
 	},
