@@ -1,0 +1,61 @@
+{
+	"name": "@cerios/playwright-step-decorator",
+	"version": "1.0.0",
+	"author": "Ronald Veth - Cerios",
+	"description": "A Playwright decorator for creating step-based tests",
+	"license": "MIT",
+	"keywords": [
+		"playwright",
+		"testing",
+		"decorator",
+		"step"
+	],
+	"bugs": {
+		"url": "https://github.com/CeriosTesting/playwright-step-decorator/issues"
+	},
+	"homepage": "https://github.com/CeriosTesting/playwright-step-decorator#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/CeriosTesting/playwright-step-decorator.git"
+	},
+	"scripts": {
+		"format": "prettier --write . --cache --ignore-path=.prettierignore",
+		"test": "playwright test",
+		"prepare": "husky",
+		"build": "tsup",
+		"check-exports": "attw --pack .",
+		"changeset": "npx changeset",
+		"local-release": "changeset version && changeset publish",
+		"compile": "tsc --noEmit",
+		"update-all-packages": "npx npm-check-updates -u && npm i"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/cli": "^0.18.1",
+		"@changesets/cli": "^2.29.4",
+		"@playwright/test": "^1.52.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^16.0.0",
+		"prettier": "^3.5.3",
+		"ts-node": "^10.9.2",
+		"tsup": "^8.4.0",
+		"typescript": "^5.8.3"
+	},
+	"peerDependencies": {
+		"@playwright/test": "^1.40.0",
+		"typescript": "^5.0.2"
+	},
+	"main": "./dist/index.js",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist"
+	],
+	"type": "commonjs",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"import": "./dist/index.mjs",
+			"default": "./dist/index.js"
+		}
+	}
+}
