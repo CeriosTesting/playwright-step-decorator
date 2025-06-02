@@ -17,6 +17,12 @@ A TypeScript decorator for Playwright that makes your test steps more readable a
 npm install @cerios/playwright-step-decorator
 ```
 
+### For Development
+
+```sh
+npm install --save-dev @cerios/playwright-step-decorator
+```
+
 ---
 
 ## Usage
