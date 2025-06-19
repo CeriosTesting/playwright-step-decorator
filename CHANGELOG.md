@@ -1,5 +1,11 @@
 # @cerios/playwright-step-decorator
 
+## 1.2.0
+
+### Minor Changes
+
+- 34195b3: Changed the step decorator to ClassMethodDecoratorContext
+
 ## 1.1.1
 
 ### Patch Changes

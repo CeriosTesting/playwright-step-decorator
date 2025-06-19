@@ -1,6 +1,6 @@
 {
 	"name": "@cerios/playwright-step-decorator",
-	"version": "1.1.1",
+	"version": "1.2.0",
 	"author": "Ronald Veth - Cerios",
 	"description": "A Playwright decorator for creating step-based tests",
 	"license": "MIT",
