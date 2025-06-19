@@ -142,4 +142,14 @@ test.describe("step decorator", () => {
 		await decorated("Bob", 77);
 		expect(collectedSteps).toEqual(["Named: Bob, Index: 77"]);
 	});
+
+	test("should work with non-Promise (sync) function by wrapping result in Promise", async () => {
+		const decorated = step("Sync value: {{value}}")(function (value: number) {
+			return value * 2;
+		});
+
+		const result = await decorated(5);
+		expect(result).toBe(10);
+		expect(collectedSteps).toEqual(["Sync value: 5"]);
+	});
 });

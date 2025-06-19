@@ -20,7 +20,7 @@ import test from "@playwright/test";
  * ```
  */
 export function step<T>(description: string) {
-	return function (target: (...args: any[]) => Promise<T>) {
+	return function (target: (...args: any[]) => T) {
 		return function (this: any, ...args: any[]): Promise<T> {
 			const paramNames = extractFunctionParamNames(target);
 			const placeholders = getPlaceholders(description);
@@ -33,7 +33,11 @@ export function step<T>(description: string) {
 			const formattedDescription = formatDescription(description, placeholders, paramNames, args);
 
 			return test.step(formattedDescription, async () => {
-				return (await target.call(this, ...args)) as T;
+				const result = target.call(this, ...args);
+				if (result instanceof Promise) {
+					return await result;
+				}
+				return result;
 			});
 		};
 	};
