@@ -1,5 +1,17 @@
 # @cerios/playwright-step-decorator
 
+## 1.2.0
+
+### Minor Changes
+
+- 34195b3: Changed the step decorator to ClassMethodDecoratorContext
+
+## 1.1.1
+
+### Patch Changes
+
+- 712703a: Now supporting synchronous functions in step decorator. Including fix for previous 1.1.0 release with empty node modules
+
 ## 1.1.0
 
 ### Minor Changes

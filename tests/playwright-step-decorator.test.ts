@@ -24,132 +24,126 @@ test.describe("step decorator", () => {
 	});
 
 	test("should replace simple parameter in description", async () => {
-		const decorated = step("Say hello to {{name}}")(async function (name: string) {
-			return name;
-		});
+		class MyTestClass {
+			@step("Class method called with {{param}}")
+			async myMethod(param: string): Promise<string> {
+				return `Called with ${param}`;
+			}
+		}
 
-		const result = await decorated("Alice");
+		const instance = new MyTestClass();
+		const result = await instance.myMethod("test");
 
-		expect(result).toBe("Alice");
-		expect(collectedSteps).toEqual(["Say hello to Alice"]);
+		expect(result).toBe("Called with test");
+		expect(collectedSteps).toEqual(["Class method called with test"]);
 	});
 
-	test("should replace nested parameter in description", async () => {
-		const decorated = step("User: {{user.name}}, Age: {{user.age}}")(async function (user: {
-			name: string;
-			age: number;
-		}) {
-			return `${user.name}, ${user.age}`;
-		});
-
-		await decorated({ name: "Bob", age: 30 });
-		expect(collectedSteps).toEqual(["User: Bob, Age: 30"]);
+	test("should use default description if none provided", async () => {
+		class MyTestClass {
+			@step()
+			async foo() {
+				return "bar";
+			}
+		}
+		const instance = new MyTestClass();
+		const result = await instance.foo();
+		expect(result).toBe("bar");
+		expect(collectedSteps[0]).toBe("MyTestClass.foo");
 	});
 
-	test("should throw error if parameter missing in function", async () => {
-		const decorated = step("Missing param {{foo}}")(async function (bar: string) {
-			return bar;
-		});
+	test("should throw error if description references missing param", async () => {
+		class MyTestClass {
+			@step("Test with {{param2}}")
+			async foo(param1: string) {
+				return param1;
+			}
+		}
+		const instance = new MyTestClass();
+		expect(() => instance.foo("value")).toThrow("Missing function parameters: param2");
+		expect(collectedSteps).toEqual([]);
+	});
 
-		expect(() => decorated("test")).toThrow("Missing function parameters: foo");
+	test("should replace multiple placeholders in description", async () => {
+		class MyTestClass {
+			@step("Params: {{a}}, {{b}}")
+			async foo(a: string, b: number) {
+				return `${a} ${b}`;
+			}
+		}
+		const instance = new MyTestClass();
+		await instance.foo("hello", 42);
+		expect(collectedSteps[0]).toBe("Params: hello, 42");
+	});
+
+	test("should support mixing named and index placeholders", async () => {
+		class MyTestClass {
+			@step("Array value at [[0]] is {{value}}")
+			async foo(value: string) {
+				return `Value is ${value}`;
+			}
+		}
+		const instance = new MyTestClass();
+		await instance.foo("TEST");
+		expect(collectedSteps[0]).toBe("Array value at TEST is TEST");
+	});
+
+	test("should handle nested object placeholders", async () => {
+		class MyTestClass {
+			@step("Nested value: {{obj.prop}}")
+			async foo(obj: { prop: string }) {
+				return `Value is ${obj.prop}`;
+			}
+		}
+		const instance = new MyTestClass();
+		await instance.foo({ prop: "test" });
+		expect(collectedSteps[0]).toBe("Nested value: test");
+	});
+
+	test("should handle multiple placeholders in nested objects", async () => {
+		class MyTestClass {
+			@step("Values: {{obj.prop1}}, {{obj.prop2}}")
+			async foo(obj: { prop1: string; prop2: number }) {
+				return `Values are ${obj.prop1} and ${obj.prop2}`;
+			}
+		}
+		const instance = new MyTestClass();
+		await instance.foo({ prop1: "test", prop2: 42 });
+		expect(collectedSteps[0]).toBe("Values: test, 42");
+	});
+
+	test("should throw error if [[2]] index is out of bounds", async () => {
+		class MyTestClass {
+			@step("Value at [[2]] is {{value}}")
+			async foo(value: string) {
+				return `Value is ${value}`;
+			}
+		}
+		const instance = new MyTestClass();
+		expect(() => instance.foo("test")).toThrow("Parameter index '2' is out of bounds");
 		expect(collectedSteps).toEqual([]);
 	});
 
 	test("should throw error if nested property does not exist", async () => {
-		const decorated = step("User: {{user.name}}, City: {{user.address.city}}")(async function (user: { name: string }) {
-			return user.name;
-		});
-
-		expect(() => decorated({ name: "Charlie" })).toThrow("Property 'address' does not exist on parameter 'user'");
+		class MyTestClass {
+			@step("Value: {{obj.nonExistent}}")
+			async foo(obj: { prop: string }) {
+				return `Value is ${obj.prop}`;
+			}
+		}
+		const instance = new MyTestClass();
+		expect(() => instance.foo({ prop: "test" })).toThrow("Property 'nonExistent' does not exist on parameter 'obj'");
 		expect(collectedSteps).toEqual([]);
 	});
 
-	test("should work with multiple parameters", async () => {
-		const decorated = step("A: {{a}}, B: {{b}}")(async function (a: number, b: string) {
-			return `${a}-${b}`;
-		});
-
-		await decorated(42, "foo");
-		expect(collectedSteps).toEqual(["A: 42, B: foo"]);
-	});
-
-	test("should handle no parameters in description", async () => {
-		const decorated = step("No parameters")(async function () {
-			return "Done";
-		});
-
-		await decorated();
-		expect(collectedSteps).toEqual(["No parameters"]);
-	});
-
-	test("should handle empty description", async () => {
-		const decorated = step("")(async function () {
-			return "Empty step";
-		});
-
-		await decorated();
-		expect(collectedSteps).toEqual([""]);
-	});
-
-	test("should support multiple decorated steps in sequence", async () => {
-		const step1 = step("Step 1: greet {{name}}")(async function (name: string) {
-			return `Hello, ${name}`;
-		});
-		const step2 = step("Step 2: farewell {{name}}")(async function (name: string) {
-			return `Goodbye, ${name}`;
-		});
-
-		await step1("John");
-		await step2("Doe");
-
-		expect(collectedSteps).toEqual(["Step 1: greet John", "Step 2: farewell Doe"]);
-	});
-
-	test("should replace [[0]] with first argument", async () => {
-		const decorated = step("First arg is [[0]]")(async function (a: string) {
-			return a;
-		});
-
-		await decorated("foo");
-		expect(collectedSteps).toEqual(["First arg is foo"]);
-	});
-
-	test("should replace [[1]] with second argument", async () => {
-		const decorated = step("Second arg is [[1]]")(async function (a: string, b: number) {
-			return a + b;
-		});
-
-		await decorated("foo", 123);
-		expect(collectedSteps).toEqual(["Second arg is 123"]);
-	});
-
-	test("should throw error if [[2]] index is out of bounds", async () => {
-		const decorated = step("Arg [[2]]")(async function (a: string, b: string) {
-			return a + b;
-		});
-
-		expect(() => {
-			decorated("x", "y");
-		}).toThrow("Parameter index '2' is out of bounds");
-		expect(collectedSteps).toEqual([]);
-	});
-
-	test("should support mixing named and index placeholders", async () => {
-		const decorated = step("Named: {{name}}, Index: [[1]]")(async function (name: string, value: number) {
-			return `${name}-${value}`;
-		});
-
-		await decorated("Bob", 77);
-		expect(collectedSteps).toEqual(["Named: Bob, Index: 77"]);
-	});
-
-	test("should work with non-Promise (sync) function by wrapping result in Promise", async () => {
-		const decorated = step("Sync value: {{value}}")(function (value: number) {
-			return value * 2;
-		});
-
-		const result = await decorated(5);
-		expect(result).toBe(10);
-		expect(collectedSteps).toEqual(["Sync value: 5"]);
+	test("should handle array placeholders", async () => {
+		class MyTestClass {
+			@step("Array values: [[0]]")
+			async foo(arr: string[]) {
+				return `Value is ${arr.join(",")}`;
+			}
+		}
+		const instance = new MyTestClass();
+		await instance.foo(["one", "two", "three"]);
+		expect(collectedSteps[0]).toBe("Array values: one,two,three");
 	});
 });

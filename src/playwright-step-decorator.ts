@@ -2,10 +2,13 @@ import test from "@playwright/test";
 
 /**
  * Decorator to wrap a function in a Playwright step with a dynamic description.
- * Placeholders in the description (e.g. {{user.name}} or [[0]]) will be replaced with actual argument values.
+ *
+ * If no description is provided, the step will use the format: `ClassName.methodName`.
+ *
+ * Placeholders in the description (e.g. `{{user.name}}` or `[[0]]`) will be replaced with actual argument values.
  *
  * @template T The return type of the decorated function.
- * @param description The step description, supporting placeholders like {{param}}, {{param.prop}}, or [[index]].
+ * @param description The step description, supporting placeholders like `{{param}}`, `{{param.prop}}`, or `[[index]]`.
  * @returns A decorator function that wraps the target function in a Playwright step.
  *
  * @example
@@ -16,35 +19,37 @@ import test from "@playwright/test";
  *
  *   @step("Click button [[0]] times")
  *   async clickButton(times: number) { ... }
+ *
+ *   @step()
+ *   async defaultStep() { ... } // Step will be "MyTest.defaultStep"
  * }
  * ```
  */
-export function step<T>(description: string) {
-	return function (target: (...args: any[]) => T) {
-		return function (this: any, ...args: any[]): Promise<T> {
-			const paramNames = extractFunctionParamNames(target);
-			const placeholders = getPlaceholders(description);
+export function step(description?: string) {
+	return function decorator(target: Function, context: ClassMethodDecoratorContext) {
+		return function replacementMethod(this: any, ...args: any) {
+			let formattedDescription = `${this.constructor.name}.${context.name as string}`;
+			if (description) {
+				const paramNames = extractFunctionParamNames(target);
+				const placeholders = getPlaceholders(description);
 
-			const missingParams = findMissingParams(placeholders, paramNames);
-			if (missingParams.length > 0) {
-				throw new Error(`Missing function parameters: ${missingParams.join(", ")}`);
+				const missingParams = findMissingParams(placeholders, paramNames);
+				if (missingParams.length > 0) {
+					throw new Error(`Missing function parameters: ${missingParams.join(", ")}`);
+				}
+
+				formattedDescription = formatDescription(description, placeholders, paramNames, args);
 			}
 
-			const formattedDescription = formatDescription(description, placeholders, paramNames, args);
-
 			return test.step(formattedDescription, async () => {
-				const result = target.call(this, ...args);
-				if (result instanceof Promise) {
-					return await result;
-				}
-				return result;
+				return await target.call(this, ...args);
 			});
 		};
 	};
 }
 
-function extractFunctionParamNames(func: (...args: any[]) => any): string[] {
-	const fnStr = func.toString();
+function extractFunctionParamNames(target: Function): string[] {
+	const fnStr = target.toString();
 	const match = fnStr.match(/^[\s\S]*?\(([^)]*)\)/);
 	if (!match) return [];
 	return match[1]
