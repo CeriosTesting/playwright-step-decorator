@@ -1,5 +1,11 @@
 # @cerios/playwright-step-decorator
 
+## 1.3.0
+
+### Minor Changes
+
+- 969a029: force async methods to be used with step decorator to prevent unawaited async
+
 ## 1.2.0
 
 ### Minor Changes

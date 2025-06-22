@@ -1,15 +1,18 @@
 import test from "@playwright/test";
 
+type AsyncMethod<This, Args extends any[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 /**
- * Decorator to wrap a function in a Playwright step with a dynamic description.
+ * Decorator to wrap an async method in a Playwright step with a dynamic description.
  *
  * If no description is provided, the step will use the format: `ClassName.methodName`.
  *
- * Placeholders in the description (e.g. `{{user.name}}` or `[[0]]`) will be replaced with actual argument values.
+ * Placeholders in the description (e.g. `{{user.name}}` or `[[0]]`) will be replaced with actual argument values at runtime.
  *
- * @template T The return type of the decorated function.
- * @param description The step description, supporting placeholders like `{{param}}`, `{{param.prop}}`, or `[[index]]`.
- * @returns A decorator function that wraps the target function in a Playwright step.
+ * @template This The type of the class instance.
+ * @template Args The argument types of the decorated method.
+ * @template ReturnType The return type of the decorated method.
+ * @param description Optional step description, supporting placeholders like `{{param}}`, `{{param.prop}}`, or `[[index]]`.
+ * @returns A decorator function that wraps the target async method in a Playwright step.
  *
  * @example
  * ```typescript
@@ -24,9 +27,15 @@ import test from "@playwright/test";
  *   async defaultStep() { ... } // Step will be "MyTest.defaultStep"
  * }
  * ```
+ *
+ * @throws {Error} If placeholders reference missing or out-of-bounds parameters.
+ * @throws {Error} If property access in a placeholder is invalid.
  */
 export function step(description?: string) {
-	return function decorator(target: Function, context: ClassMethodDecoratorContext) {
+	return function <This, Args extends any[], ReturnType>(
+		target: AsyncMethod<This, Args, ReturnType>,
+		context: ClassMethodDecoratorContext<This, AsyncMethod<This, Args, ReturnType>>
+	) {
 		return function replacementMethod(this: any, ...args: any) {
 			let formattedDescription = `${this.constructor.name}.${context.name as string}`;
 			if (description) {
