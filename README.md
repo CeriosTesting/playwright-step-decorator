@@ -111,6 +111,40 @@ await example('Bob', 77);
 
 ---
 
+## Accessing Step Context (`getStepInfo`)
+
+Sometimes you want to attach files, logs, or metadata to the current Playwright step inside your decorated method.  
+Use the `getStepInfo` function to access the [`TestStepInfo`](https://playwright.dev/docs/api/class-teststepinfo) object for the current step.
+
+### Example
+
+```typescript
+import { step, getStepInfo } from "@cerios/playwright-step-decorator";
+
+class NavbarTest {
+	@step("Assert the navbar items are as expected")
+	async assertNavbarItems(expectedItems: string[]): Promise<void> {
+		const stepInfo = getStepInfo(this);
+		await stepInfo.attach("expected-items.json", {
+			body: JSON.stringify(expectedItems),
+			contentType: "application/json",
+		});
+		// ...your assertions...
+		await stepInfo.attach("actual-items.json", {
+			body: JSON.stringify(await this.navbarItem.allInnerTexts()),
+			contentType: "application/json",
+		});
+	}
+}
+```
+
+**Note:**
+
+- `getStepInfo(this)` must be called inside a method decorated with `@step`.
+- Throws an error if called outside a step context.
+
+---
+
 ## API
 
 ### `step(description: string)`
