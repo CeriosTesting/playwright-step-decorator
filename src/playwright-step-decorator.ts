@@ -1,4 +1,6 @@
-import test from "@playwright/test";
+import { test, TestStepInfo } from "@playwright/test";
+
+const StepSymbol: unique symbol = Symbol("playwrightStep");
 
 type AsyncMethod<This, Args extends any[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 /**
@@ -37,24 +39,50 @@ export function step(description?: string) {
 		context: ClassMethodDecoratorContext<This, AsyncMethod<This, Args, ReturnType>>
 	) {
 		return function replacementMethod(this: any, ...args: any) {
-			let formattedDescription = `${this.constructor.name}.${context.name as string}`;
+			const methodName = `${this.constructor.name}.${context.name as string}`;
+			let formattedDescription = methodName;
 			if (description) {
 				const paramNames = extractFunctionParamNames(target);
 				const placeholders = getPlaceholders(description);
 
 				const missingParams = findMissingParams(placeholders, paramNames);
 				if (missingParams.length > 0) {
-					throw new Error(`Missing function parameters: ${missingParams.join(", ")}`);
+					throw new Error(
+						`Missing function parameters (${missingParams.join(", ")}) in method '${methodName}'. Please check your @step decorator placeholders.`
+					);
 				}
 
-				formattedDescription = formatDescription(description, placeholders, paramNames, args);
+				formattedDescription = formatDescription(methodName, description, placeholders, paramNames, args);
 			}
 
-			return test.step(formattedDescription, async () => {
-				return await target.call(this, ...args);
+			return test.step(formattedDescription, async step => {
+				this[StepSymbol] = step;
+				try {
+					return await target.call(this, ...args);
+				} finally {
+					delete this[StepSymbol];
+				}
 			});
 		};
 	};
+}
+
+/**
+ * Retrieves the `TestStepInfo` associated with the given Step Decorator.
+ *
+ * This function expects the instance to have a step context stored under the `StepSymbol` property.
+ * If the step context is not found, it throws an error indicating that the method should be decorated with `@step`.
+ *
+ * @param instance - The object instance from which to retrieve the step context.
+ * @returns The `TestStepInfo` associated with the instance.
+ * @throws {Error} If no Playwright step context is found on the instance.
+ */
+export function getStepInfo(instance: any): TestStepInfo {
+	const step = instance[StepSymbol];
+	if (!step) {
+		throw new Error("No Playwright step context found. Make sure this method is decorated with @step.");
+	}
+	return step;
 }
 
 function extractFunctionParamNames(target: Function): string[] {
@@ -80,13 +108,23 @@ function findMissingParams(placeholders: string[], paramNames: string[]): string
 		.filter(param => !paramNames.includes(param));
 }
 
-function formatDescription(description: string, placeholders: string[], paramNames: string[], args: any[]): string {
+function formatDescription(
+	methodName: string,
+	description: string,
+	placeholders: string[],
+	paramNames: string[],
+	args: any[]
+): string {
 	let result = description;
 	for (const placeholder of placeholders) {
 		if (placeholder.startsWith("[[") && placeholder.endsWith("]]")) {
 			const index = parseInt(placeholder.slice(2, -2), 10);
 			if (isNaN(index) || index < 0 || index >= args.length) {
-				throw new Error(`Parameter index '${index}' is out of bounds`);
+				throw new Error(
+					`Parameter index '${index}' is out of bounds in method '${methodName}'. ` +
+						`This method received ${args.length} argument(s), but the @step decorator references index ${index}. ` +
+						`Please check your @step decorator placeholders.`
+				);
 			}
 			result = result.replace(`[[${index}]]`, String(args[index]));
 		} else {
@@ -98,7 +136,11 @@ function formatDescription(description: string, placeholders: string[], paramNam
 				if (value && typeof value === "object" && parts[i] in value) {
 					value = value[parts[i]];
 				} else {
-					throw new Error(`Property '${parts[i]}' does not exist on parameter '${parts[0]}'`);
+					throw new Error(
+						`Invalid @step placeholder '{{${placeholder}}}' in method '${methodName}': ` +
+							`Property '${parts[i]}' does not exist on parameter '${parts[0]}'. ` +
+							`Please check your @step decorator placeholders.`
+					);
 				}
 			}
 

@@ -59,7 +59,9 @@ test.describe("step decorator", () => {
 			}
 		}
 		const instance = new MyTestClass();
-		expect(() => instance.foo("value")).toThrow("Missing function parameters: param2");
+		expect(() => instance.foo("value")).toThrow(
+			"Missing function parameters (param2) in method 'MyTestClass.foo'. Please check your @step decorator placeholders."
+		);
 		expect(collectedSteps).toEqual([]);
 	});
 
