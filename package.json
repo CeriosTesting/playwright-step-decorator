@@ -44,7 +44,7 @@
 	},
 	"peerDependencies": {
 		"@playwright/test": "^1.51.0",
-		"typescript": "^5.9.3"
+		"typescript": "^5.0.2"
 	},
 	"main": "./dist/index.js",
 	"module": "./dist/index.mjs",
