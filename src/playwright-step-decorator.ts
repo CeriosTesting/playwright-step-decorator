@@ -2,7 +2,7 @@ import { test, TestStepInfo } from "@playwright/test";
 
 const StepSymbol: unique symbol = Symbol("playwrightStep");
 
-type AsyncMethod<This, Args extends any[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
+type AsyncMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 /**
  * Decorator to wrap an async method in a Playwright step with a dynamic description.
  *
@@ -34,11 +34,11 @@ type AsyncMethod<This, Args extends any[], ReturnType> = (this: This, ...args: A
  * @throws {Error} If property access in a placeholder is invalid.
  */
 export function step(description?: string) {
-	return function <This, Args extends any[], ReturnType>(
+	return function <This extends { constructor: { name: string } }, Args extends unknown[], ReturnType>(
 		target: AsyncMethod<This, Args, ReturnType>,
 		context: ClassMethodDecoratorContext<This, AsyncMethod<This, Args, ReturnType>>
 	) {
-		return function replacementMethod(this: any, ...args: any) {
+		return function replacementMethod(this: This, ...args: Args) {
 			const methodName = `${this.constructor.name}.${context.name as string}`;
 			let formattedDescription = methodName;
 			if (description) {
@@ -61,11 +61,11 @@ export function step(description?: string) {
 			return test.step(
 				formattedDescription,
 				async step => {
-					this[StepSymbol] = step;
+					(this as Record<symbol, unknown>)[StepSymbol] = step;
 					try {
 						return await target.call(this, ...args);
 					} finally {
-						delete this[StepSymbol];
+						delete (this as Record<symbol, unknown>)[StepSymbol];
 					}
 				},
 				{ location }
@@ -84,12 +84,12 @@ export function step(description?: string) {
  * @returns The `TestStepInfo` associated with the instance.
  * @throws {Error} If no Playwright step context is found on the instance.
  */
-export function getStepInfo(instance: any): TestStepInfo {
-	const step = instance[StepSymbol];
+export function getStepInfo(instance: unknown): TestStepInfo {
+	const step = (instance as Record<symbol, unknown>)[StepSymbol];
 	if (!step) {
 		throw new Error("No Playwright step context found. Make sure this method is decorated with @step.");
 	}
-	return step;
+	return step as TestStepInfo;
 }
 
 /**
@@ -161,7 +161,7 @@ function formatDescription(
 	description: string,
 	placeholders: string[],
 	paramNames: string[],
-	args: any[]
+	args: unknown[]
 ): string {
 	let result = description;
 	for (const placeholder of placeholders) {
@@ -182,7 +182,7 @@ function formatDescription(
 
 			for (let i = 1; i < parts.length; i++) {
 				if (value && typeof value === "object" && parts[i] in value) {
-					value = value[parts[i]];
+					value = (value as Record<string, unknown>)[parts[i]];
 				} else {
 					throw new Error(
 						`Invalid @step placeholder '{{${placeholder}}}' in method '${methodName}': ` +

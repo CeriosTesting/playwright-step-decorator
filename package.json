@@ -19,15 +19,14 @@
 		"url": "git+https://github.com/CeriosTesting/playwright-step-decorator.git"
 	},
 	"scripts": {
-		"format": "prettier --write . --cache --ignore-path=.prettierignore",
 		"test": "playwright test",
-		"prepare": "husky",
+		"format": "oxfmt .",
+		"lint": "oxlint --type-aware --type-check",
 		"build": "tsup",
 		"check-exports": "attw --pack .",
 		"changeset": "npx changeset",
 		"changeset:version": "changeset version && npm i",
 		"changeset:publish": "tsup && changeset publish",
-		"compile": "tsc --noEmit",
 		"update-all-packages": "npx npm-check-updates -u && npm run clean-install",
 		"clean-install": "rm -rf node_modules package-lock.json && npm i"
 	},
@@ -35,16 +34,14 @@
 		"@arethetypeswrong/cli": "^0.18.2",
 		"@changesets/cli": "^2.29.8",
 		"@playwright/test": "^1.58.1",
-		"husky": "^9.1.7",
-		"lint-staged": "^16.2.7",
-		"prettier": "^3.8.1",
+		"oxfmt": "^0.26.0",
+		"oxlint": "^1.41.0",
+		"oxlint-tsgolint": "^0.11.1",
 		"ts-node": "^10.9.2",
-		"tsup": "^8.5.1",
-		"typescript": "^5.9.3"
+		"tsup": "^8.5.1"
 	},
 	"peerDependencies": {
-		"@playwright/test": "^1.51.0",
-		"typescript": "^5.9.3"
+		"@playwright/test": "^1.51.0"
 	},
 	"main": "./dist/index.js",
 	"module": "./dist/index.mjs",
