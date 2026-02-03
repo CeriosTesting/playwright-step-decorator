@@ -8,6 +8,7 @@ A TypeScript decorator for Playwright that makes your test steps more readable a
 - **Dynamic descriptions**: Use placeholders to inject parameter values into step descriptions.
 - **Supports nested properties**: Reference nested object properties in your descriptions.
 - **Index-based placeholders**: Reference arguments by their position.
+- **Accurate source locations**: Step locations in reports point to the actual method call site, not the decorator implementation.
 
 ---
 
@@ -100,6 +101,32 @@ async function example(name: string, value: number) {
 await example('Bob', 77);
 // Step description: "Named: Bob, Index: 77"
 ```
+
+---
+
+## Accurate Source Locations in Reports
+
+The decorator automatically captures the call site location of your decorated methods and passes it to Playwright's `test.step()`. This means that:
+
+- **HTML reports** show the correct file and line number where the method was called
+- **Trace viewer** points to the actual test code, not the decorator implementation
+- **CI logs** display accurate source locations for easier debugging
+
+This feature uses Playwright's built-in [`location` parameter](https://playwright.dev/docs/api/class-test#test-step-option-location) to ensure step locations in reports are as helpful as possible.
+
+### Example
+
+When you call a decorated method in your test:
+
+```typescript
+// my-test.spec.ts
+test("example", async ({ page }) => {
+	const loginPage = new LoginPage(page);
+	await loginPage.login(user); // Line 10
+});
+```
+
+The Playwright report will show the step location as `my-test.spec.ts:10`, not the location of the decorator implementation.
 
 ---
 

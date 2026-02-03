@@ -2,8 +2,15 @@ import { test, expect } from "@playwright/test";
 import { step } from "../src/playwright-step-decorator";
 
 const collectedSteps: string[] = [];
-const mockTestStep = async (desc: string, fn: () => Promise<any>) => {
+const collectedLocations: Array<{ file: string; line: number; column: number } | undefined> = [];
+
+const mockTestStep = async (
+	desc: string,
+	fn: () => Promise<any>,
+	options?: { location?: { file: string; line: number; column: number } }
+) => {
 	collectedSteps.push(desc);
+	collectedLocations.push(options?.location);
 	return await fn();
 };
 
@@ -21,6 +28,7 @@ test.describe("step decorator", () => {
 
 	test.beforeEach(() => {
 		collectedSteps.length = 0;
+		collectedLocations.length = 0;
 	});
 
 	test("should replace simple parameter in description", async () => {
@@ -147,5 +155,162 @@ test.describe("step decorator", () => {
 		const instance = new MyTestClass();
 		await instance.foo(["one", "two", "three"]);
 		expect(collectedSteps[0]).toBe("Array values: one,two,three");
+	});
+});
+
+test.describe("step decorator - location tracking", () => {
+	let originalStep: typeof test.step;
+
+	test.beforeAll(() => {
+		originalStep = (test as any).step;
+		(test as any).step = mockTestStep;
+	});
+
+	test.afterAll(() => {
+		(test as any).step = originalStep;
+	});
+
+	test.beforeEach(() => {
+		collectedSteps.length = 0;
+		collectedLocations.length = 0;
+	});
+
+	test("should capture location when decorated method is called", async () => {
+		class MyTestClass {
+			@step("Test step with location")
+			async myMethod(): Promise<void> {
+				// Method body
+			}
+		}
+
+		const instance = new MyTestClass();
+		await instance.myMethod(); // This line should be captured
+
+		expect(collectedSteps).toEqual(["Test step with location"]);
+		expect(collectedLocations).toHaveLength(1);
+
+		const location = collectedLocations[0];
+		expect(location).toBeDefined();
+		expect(location?.file).toContain("playwright-step-decorator.test.ts");
+		expect(location?.line).toBeGreaterThan(0);
+		expect(location?.column).toBeGreaterThan(0);
+	});
+
+	test("should capture different locations for multiple calls", async () => {
+		class MyTestClass {
+			@step("Method call")
+			async myMethod(): Promise<void> {
+				// Method body
+			}
+		}
+
+		const instance = new MyTestClass();
+		await instance.myMethod(); // First call - line X
+		const firstLocation = collectedLocations[0];
+
+		collectedLocations.length = 0;
+
+		await instance.myMethod(); // Second call - line Y
+		const secondLocation = collectedLocations[0];
+
+		expect(firstLocation).toBeDefined();
+		expect(secondLocation).toBeDefined();
+		expect(firstLocation?.file).toBe(secondLocation?.file);
+		// Line numbers should be different since calls are on different lines
+		expect(firstLocation?.line).not.toBe(secondLocation?.line);
+	});
+
+	test("should capture location for nested property placeholders", async () => {
+		class MyTestClass {
+			@step("User: {{user.name}}")
+			async login(user: { name: string }): Promise<void> {
+				void user; // Suppress unused warning
+			}
+		}
+
+		const instance = new MyTestClass();
+		await instance.login({ name: "Alice" }); // This line should be captured
+
+		expect(collectedSteps).toEqual(["User: Alice"]);
+
+		const location = collectedLocations[0];
+		expect(location).toBeDefined();
+		expect(location?.file).toContain("playwright-step-decorator.test.ts");
+		expect(location?.line).toBeGreaterThan(0);
+	});
+
+	test("should capture location for index placeholders", async () => {
+		class MyTestClass {
+			@step("Value: [[0]]")
+			async doSomething(value: string): Promise<void> {
+				void value; // Suppress unused warning
+			}
+		}
+
+		const instance = new MyTestClass();
+		await instance.doSomething("test"); // This line should be captured
+
+		expect(collectedSteps).toEqual(["Value: test"]);
+
+		const location = collectedLocations[0];
+		expect(location).toBeDefined();
+		expect(location?.file).toContain("playwright-step-decorator.test.ts");
+	});
+
+	test("should capture location even without description", async () => {
+		class MyTestClass {
+			@step()
+			async defaultMethod(): Promise<string> {
+				return "result";
+			}
+		}
+
+		const instance = new MyTestClass();
+		await instance.defaultMethod(); // This line should be captured
+
+		expect(collectedSteps).toEqual(["MyTestClass.defaultMethod"]);
+
+		const location = collectedLocations[0];
+		expect(location).toBeDefined();
+		expect(location?.file).toContain("playwright-step-decorator.test.ts");
+		expect(location?.line).toBeGreaterThan(0);
+	});
+
+	test("should not include node_modules in location path", async () => {
+		class MyTestClass {
+			@step("Test step")
+			async myMethod(): Promise<void> {
+				// Method body
+			}
+		}
+
+		const instance = new MyTestClass();
+		await instance.myMethod();
+
+		const location = collectedLocations[0];
+		expect(location).toBeDefined();
+		expect(location?.file).not.toContain("node_modules");
+	});
+
+	test("should handle location for methods called in sequence", async () => {
+		class MyTestClass {
+			@step("First step")
+			async first(): Promise<void> {}
+
+			@step("Second step")
+			async second(): Promise<void> {}
+		}
+
+		const instance = new MyTestClass();
+		await instance.first();
+		await instance.second();
+
+		expect(collectedLocations).toHaveLength(2);
+		expect(collectedLocations[0]).toBeDefined();
+		expect(collectedLocations[1]).toBeDefined();
+
+		// Both should be in the same file but different lines
+		expect(collectedLocations[0]?.file).toBe(collectedLocations[1]?.file);
+		expect(collectedLocations[0]?.line).not.toBe(collectedLocations[1]?.line);
 	});
 });
