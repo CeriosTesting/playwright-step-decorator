@@ -313,4 +313,32 @@ test.describe("step decorator - location tracking", () => {
 		expect(collectedLocations[0]?.file).toBe(collectedLocations[1]?.file);
 		expect(collectedLocations[0]?.line).not.toBe(collectedLocations[1]?.line);
 	});
+
+	test("should capture location when step-decorated method calls another class method", async () => {
+		class HelperClass {
+			async doWork(): Promise<string> {
+				return "work done";
+			}
+		}
+
+		class MainClass {
+			private helper = new HelperClass();
+
+			@step("Main operation calling helper")
+			async performOperation(): Promise<string> {
+				return await this.helper.doWork();
+			}
+		}
+
+		const instance = new MainClass();
+		await instance.performOperation(); // This line should be captured
+
+		expect(collectedSteps).toEqual(["Main operation calling helper"]);
+
+		const location = collectedLocations[0];
+		expect(location).toBeDefined();
+		expect(location?.file).toContain("playwright-step-decorator.test.ts");
+		expect(location?.line).toBeGreaterThan(0);
+		expect(location?.column).toBeGreaterThan(0);
+	});
 });
