@@ -156,6 +156,26 @@ test.describe("step decorator", () => {
 		await instance.foo(["one", "two", "three"]);
 		expect(collectedSteps[0]).toBe("Array values: one,two,three");
 	});
+
+	test("should collect steps when a step-decorated method calls another", async () => {
+		class MyTestClass {
+			@step("Outer step")
+			async outer(action: string): Promise<string> {
+				return await this.inner(action);
+			}
+
+			@step("Inner step with {{action}}")
+			async inner(action: string): Promise<string> {
+				return `Action: ${action}`;
+			}
+		}
+
+		const instance = new MyTestClass();
+		const result = await instance.outer("run");
+
+		expect(result).toBe("Action: run");
+		expect(collectedSteps).toEqual(["Outer step", "Inner step with run"]);
+	});
 });
 
 test.describe("step decorator - location tracking", () => {
