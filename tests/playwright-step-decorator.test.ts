@@ -4,6 +4,15 @@ import { step } from "../src/playwright-step-decorator";
 const collectedSteps: string[] = [];
 const collectedLocations: Array<{ file: string; line: number; column: number } | undefined> = [];
 
+const getCurrentLineNumber = () => {
+	const stack = new Error().stack;
+	if (!stack) return -1;
+	const line = stack.split("\n")[2];
+	if (!line) return -1;
+	const match = line.match(/:(\d+):(\d+)\)?$/);
+	return match ? Number(match[1]) : -1;
+};
+
 const mockTestStep = async (
 	desc: string,
 	fn: () => Promise<any>,
@@ -204,6 +213,7 @@ test.describe("step decorator - location tracking", () => {
 		}
 
 		const instance = new MyTestClass();
+		const callSiteLine = getCurrentLineNumber() + 1;
 		await instance.myMethod(); // This line should be captured
 
 		expect(collectedSteps).toEqual(["Test step with location"]);
@@ -212,8 +222,36 @@ test.describe("step decorator - location tracking", () => {
 		const location = collectedLocations[0];
 		expect(location).toBeDefined();
 		expect(location?.file).toContain("playwright-step-decorator.test.ts");
+		expect(location?.file).not.toContain("playwright-step-decorator.ts");
+		expect(location?.line).toBe(callSiteLine);
 		expect(location?.line).toBeGreaterThan(0);
 		expect(location?.column).toBeGreaterThan(0);
+	});
+
+	test("should keep outer location when a decorated method nests test.step", async () => {
+		class MyTestClass {
+			@step("Outer step")
+			async myMethod(): Promise<void> {
+				await test.step("Inner step", async () => {
+					// Nested step
+				});
+			}
+		}
+
+		const instance = new MyTestClass();
+		const callSiteLine = getCurrentLineNumber() + 1;
+		await instance.myMethod(); // This line should be captured for the outer step
+
+		expect(collectedSteps).toEqual(["Outer step", "Inner step"]);
+
+		const outerLocation = collectedLocations[0];
+		expect(outerLocation).toBeDefined();
+		expect(outerLocation?.file).toContain("playwright-step-decorator.test.ts");
+		expect(outerLocation?.file).not.toContain("playwright-step-decorator.ts");
+		expect(outerLocation?.line).toBe(callSiteLine);
+
+		const innerLocation = collectedLocations[1];
+		expect(innerLocation).toBeUndefined();
 	});
 
 	test("should capture different locations for multiple calls", async () => {
@@ -310,6 +348,7 @@ test.describe("step decorator - location tracking", () => {
 		const location = collectedLocations[0];
 		expect(location).toBeDefined();
 		expect(location?.file).not.toContain("node_modules");
+		expect(location?.file).not.toContain("playwright-step-decorator.ts");
 	});
 
 	test("should handle location for methods called in sequence", async () => {

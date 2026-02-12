@@ -64,6 +64,11 @@ export function step(description?: string) {
 					this[StepSymbol] = step;
 					try {
 						return await target.call(this, ...args);
+					} catch (error) {
+						if (error instanceof Error && error.stack) {
+							error.stack = filterDecoratorFrames(error.stack);
+						}
+						throw error;
 					} finally {
 						delete this[StepSymbol];
 					}
@@ -106,6 +111,16 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 	if (!stack) return undefined;
 
 	const lines = stack.split("\n");
+	const ignoredFragments = [
+		"node_modules",
+		"node:internal",
+		"/playwright-step-decorator.ts",
+		"\\playwright-step-decorator.ts",
+		"/src/playwright-step-decorator",
+		"\\src\\playwright-step-decorator",
+		"/dist/playwright-step-decorator",
+		"\\dist\\playwright-step-decorator",
+	];
 	// Skip the first few stack frames:
 	// 0: Error
 	// 1: captureCallSiteLocation
@@ -120,8 +135,8 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 		const match = line.match(/\((.+):(\d+):(\d+)\)$/) || line.match(/at\s+(.+):(\d+):(\d+)$/);
 		if (match) {
 			const [, file, lineNum, col] = match;
-			// Filter out Node.js internal modules and decorator infrastructure
-			if (!file.includes("node_modules") && !file.includes("node:internal")) {
+			// Filter out Node.js internals and the decorator module itself
+			if (!ignoredFragments.some(fragment => file.includes(fragment))) {
 				return {
 					file,
 					line: parseInt(lineNum, 10),
@@ -196,4 +211,10 @@ function formatDescription(
 		}
 	}
 	return result;
+}
+
+function filterDecoratorFrames(stack: string): string {
+	const lines = stack.split("\n");
+	const filtered = lines.filter(line => !line.includes("playwright-step-decorator"));
+	return filtered.join("\n");
 }
