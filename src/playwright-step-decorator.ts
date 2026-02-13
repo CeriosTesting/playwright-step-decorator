@@ -1,7 +1,6 @@
 import { test, TestStepInfo } from "@playwright/test";
 
 const StepSymbol: unique symbol = Symbol("playwrightStep");
-const StepLocationSymbol: unique symbol = Symbol("playwrightStepLocation");
 
 type AsyncMethod<This, Args extends any[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 /**
@@ -63,7 +62,6 @@ export function step(description?: string) {
 				formattedDescription,
 				async step => {
 					this[StepSymbol] = step;
-					this[StepLocationSymbol] = location;
 					try {
 						return await target.call(this, ...args);
 					} catch (error) {
@@ -73,24 +71,12 @@ export function step(description?: string) {
 						throw error;
 					} finally {
 						delete this[StepSymbol];
-						delete this[StepLocationSymbol];
 					}
 				},
 				{ location }
 			);
 		};
 	};
-}
-
-/**
- * Retrieves the captured call site location for the current step.
- */
-export function getStepLocation(instance: any): { file: string; line: number; column: number } {
-	const location = instance[StepLocationSymbol];
-	if (!location) {
-		throw new Error("No Playwright step location found. Make sure this method is decorated with @step.");
-	}
-	return location;
 }
 
 /**
