@@ -1,5 +1,5 @@
 import { expect, Locator, Page } from "@playwright/test";
-import { step, getStepInfo } from "src";
+import { step, getStepInfo } from "../../src";
 
 export class MenuPom {
 	private readonly parent: Locator = this._page.getByLabel("Main");
@@ -16,7 +16,7 @@ export class MenuPom {
 			contentType: "application/json",
 		});
 		await expect(this.navbarItem).toHaveText(expectedItems, { useInnerText: true });
-		stepInfo.attach("actual-items.json", {
+		await stepInfo.attach("actual-items.json", {
 			body: JSON.stringify(await this.navbarItem.allInnerTexts()),
 			contentType: "application/json",
 		});

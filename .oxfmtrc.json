@@ -1,0 +1,10 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"ignorePatterns": [],
+	"printWidth": 120,
+	"useTabs": true,
+	"experimentalSortImports": {
+		"enabled": true,
+		"groupOrder": ["builtin", "external", "internal", "parent", "sibling", "index"]
+	}
+}
