@@ -55,14 +55,26 @@ export function step(description?: string) {
 				formattedDescription = formatDescription(methodName, description, placeholders, paramNames, args);
 			}
 
-			return test.step(formattedDescription, async step => {
-				this[StepSymbol] = step;
-				try {
-					return await target.call(this, ...args);
-				} finally {
-					delete this[StepSymbol];
-				}
-			});
+			// Capture the call site location for accurate reporting
+			const location = captureCallSiteLocation();
+
+			return test.step(
+				formattedDescription,
+				async step => {
+					this[StepSymbol] = step;
+					try {
+						return await target.call(this, ...args);
+					} catch (error) {
+						if (error instanceof Error && error.stack) {
+							error.stack = filterDecoratorFrames(error.stack);
+						}
+						throw error;
+					} finally {
+						delete this[StepSymbol];
+					}
+				},
+				{ location }
+			);
 		};
 	};
 }
@@ -83,6 +95,68 @@ export function getStepInfo(instance: any): TestStepInfo {
 		throw new Error("No Playwright step context found. Make sure this method is decorated with @step.");
 	}
 	return step;
+}
+
+/**
+ * Captures the call site location from the stack trace.
+ *
+ * This function parses the Error stack to find the location where the decorated method
+ * was called (not where the decorator is defined). This location is used by Playwright
+ * to display accurate source locations in test reports and trace viewer.
+ *
+ * @returns Location object with file, line, and column, or undefined if parsing fails
+ */
+function captureCallSiteLocation(): { file: string; line: number; column: number } | undefined {
+	const stack = new Error().stack;
+	if (!stack) return undefined;
+
+	const lines = stack.split("\n");
+	const ignoredFragments = [
+		"node:internal",
+		"/node_modules/",
+		"/node_modules/playwright-step-decorator/",
+		"/packages/playwright-step-decorator/",
+		"/playwright-step-decorator.ts",
+		"/playwright-step-decorator.js",
+		"/playwright-step-decorator.cjs",
+		"/playwright-step-decorator.mjs",
+		"/src/playwright-step-decorator",
+		"/dist/playwright-step-decorator",
+	];
+	// Skip the first few stack frames:
+	// 0: Error
+	// 1: captureCallSiteLocation
+	// 2: replacementMethod (the decorator wrapper)
+	// 3: actual call site (what we want)
+	for (let i = 3; i < lines.length; i++) {
+		const line = lines[i];
+		// Match common stack trace formats:
+		// at ClassName.methodName (file:line:column)
+		// at file:line:column
+		// at async ClassName.methodName (file:line:column)
+		const match = line.match(/\((.+):(\d+):(\d+)\)$/) || line.match(/at\s+(.+):(\d+):(\d+)$/);
+		if (match) {
+			const [, file, lineNum, col] = match;
+			const normalizedFile = normalizeStackPath(file);
+			// Filter out Node.js internals and the decorator module itself
+			if (!ignoredFragments.some(fragment => normalizedFile.includes(fragment))) {
+				return {
+					file: normalizedFile,
+					line: parseInt(lineNum, 10),
+					column: parseInt(col, 10),
+				};
+			}
+		}
+	}
+	return undefined;
+}
+
+function normalizeStackPath(value: string): string {
+	let result = value.trim();
+	result = result.replace(/^file:\/\//, "");
+	result = result.replace(/^(webpack|vite|rollup):\/\//, "");
+	result = result.replace(/\\/g, "/");
+	return result;
 }
 
 function extractFunctionParamNames(target: Function): string[] {
@@ -148,4 +222,10 @@ function formatDescription(
 		}
 	}
 	return result;
+}
+
+function filterDecoratorFrames(stack: string): string {
+	const lines = stack.split("\n");
+	const filtered = lines.filter(line => !line.includes("playwright-step-decorator"));
+	return filtered.join("\n");
 }
