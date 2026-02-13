@@ -64,6 +64,11 @@ export function step(description?: string) {
 					(this as Record<symbol, unknown>)[StepSymbol] = step;
 					try {
 						return await target.call(this, ...args);
+					} catch (error) {
+						if (error instanceof Error && error.stack) {
+							error.stack = filterDecoratorFrames(error.stack);
+						}
+						throw error;
 					} finally {
 						delete (this as Record<symbol, unknown>)[StepSymbol];
 					}
@@ -106,6 +111,18 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 	if (!stack) return undefined;
 
 	const lines = stack.split("\n");
+	const ignoredFragments = [
+		"node:internal",
+		"/node_modules/",
+		"/node_modules/playwright-step-decorator/",
+		"/packages/playwright-step-decorator/",
+		"/playwright-step-decorator.ts",
+		"/playwright-step-decorator.js",
+		"/playwright-step-decorator.cjs",
+		"/playwright-step-decorator.mjs",
+		"/src/playwright-step-decorator",
+		"/dist/playwright-step-decorator",
+	];
 	// Skip the first few stack frames:
 	// 0: Error
 	// 1: captureCallSiteLocation
@@ -120,10 +137,11 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 		const match = line.match(/\((.+):(\d+):(\d+)\)$/) || line.match(/at\s+(.+):(\d+):(\d+)$/);
 		if (match) {
 			const [, file, lineNum, col] = match;
-			// Filter out Node.js internal modules and decorator infrastructure
-			if (!file.includes("node_modules") && !file.includes("node:internal")) {
+			const normalizedFile = normalizeStackPath(file);
+			// Filter out Node.js internals and the decorator module itself
+			if (!ignoredFragments.some(fragment => normalizedFile.includes(fragment))) {
 				return {
-					file,
+					file: normalizedFile,
 					line: parseInt(lineNum, 10),
 					column: parseInt(col, 10),
 				};
@@ -131,6 +149,14 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 		}
 	}
 	return undefined;
+}
+
+function normalizeStackPath(value: string): string {
+	let result = value.trim();
+	result = result.replace(/^file:\/\//, "");
+	result = result.replace(/^(webpack|vite|rollup):\/\//, "");
+	result = result.replace(/\\/g, "/");
+	return result;
 }
 
 function extractFunctionParamNames(target: Function): string[] {
@@ -196,4 +222,10 @@ function formatDescription(
 		}
 	}
 	return result;
+}
+
+function filterDecoratorFrames(stack: string): string {
+	const lines = stack.split("\n");
+	const filtered = lines.filter(line => !line.includes("playwright-step-decorator"));
+	return filtered.join("\n");
 }
