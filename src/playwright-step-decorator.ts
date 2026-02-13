@@ -1,6 +1,7 @@
 import { test, TestStepInfo } from "@playwright/test";
 
 const StepSymbol: unique symbol = Symbol("playwrightStep");
+const StepLocationSymbol: unique symbol = Symbol("playwrightStepLocation");
 
 type AsyncMethod<This, Args extends any[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 /**
@@ -62,6 +63,7 @@ export function step(description?: string) {
 				formattedDescription,
 				async step => {
 					this[StepSymbol] = step;
+					this[StepLocationSymbol] = location;
 					try {
 						return await target.call(this, ...args);
 					} catch (error) {
@@ -71,12 +73,24 @@ export function step(description?: string) {
 						throw error;
 					} finally {
 						delete this[StepSymbol];
+						delete this[StepLocationSymbol];
 					}
 				},
 				{ location }
 			);
 		};
 	};
+}
+
+/**
+ * Retrieves the captured call site location for the current step.
+ */
+export function getStepLocation(instance: any): { file: string; line: number; column: number } {
+	const location = instance[StepLocationSymbol];
+	if (!location) {
+		throw new Error("No Playwright step location found. Make sure this method is decorated with @step.");
+	}
+	return location;
 }
 
 /**
@@ -112,14 +126,16 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 
 	const lines = stack.split("\n");
 	const ignoredFragments = [
-		"node_modules",
 		"node:internal",
+		"/node_modules/",
+		"/node_modules/playwright-step-decorator/",
+		"/packages/playwright-step-decorator/",
 		"/playwright-step-decorator.ts",
-		"\\playwright-step-decorator.ts",
+		"/playwright-step-decorator.js",
+		"/playwright-step-decorator.cjs",
+		"/playwright-step-decorator.mjs",
 		"/src/playwright-step-decorator",
-		"\\src\\playwright-step-decorator",
 		"/dist/playwright-step-decorator",
-		"\\dist\\playwright-step-decorator",
 	];
 	// Skip the first few stack frames:
 	// 0: Error
@@ -135,10 +151,11 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 		const match = line.match(/\((.+):(\d+):(\d+)\)$/) || line.match(/at\s+(.+):(\d+):(\d+)$/);
 		if (match) {
 			const [, file, lineNum, col] = match;
+			const normalizedFile = normalizeStackPath(file);
 			// Filter out Node.js internals and the decorator module itself
-			if (!ignoredFragments.some(fragment => file.includes(fragment))) {
+			if (!ignoredFragments.some(fragment => normalizedFile.includes(fragment))) {
 				return {
-					file,
+					file: normalizedFile,
 					line: parseInt(lineNum, 10),
 					column: parseInt(col, 10),
 				};
@@ -146,6 +163,14 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 		}
 	}
 	return undefined;
+}
+
+function normalizeStackPath(value: string): string {
+	let result = value.trim();
+	result = result.replace(/^file:\/\//, "");
+	result = result.replace(/^(webpack|vite|rollup):\/\//, "");
+	result = result.replace(/\\/g, "/");
+	return result;
 }
 
 function extractFunctionParamNames(target: Function): string[] {
