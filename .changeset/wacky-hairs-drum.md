@@ -10,6 +10,5 @@ This release modernizes the development toolchain by adopting faster, more effic
 - **Linting**: Replaced lint-staged + Husky pre-commit hooks with oxlint for type-aware linting
 - **Dependencies**: Updated @playwright/test to ^1.58.1 and other development dependencies
 - **CI/CD**: Split GitHub workflows into separate CI and release workflows
-- **Peer Dependencies**: Removed TypeScript from peer dependencies as it's only needed for development
 
 These changes improve developer experience with faster formatting and linting while maintaining code quality standards.

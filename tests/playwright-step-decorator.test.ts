@@ -28,12 +28,12 @@ test.describe("step decorator", () => {
 
 	test.beforeAll(() => {
 		originalStep = (test as { step: typeof test.step }).step;
-		// oxlint-disable-next-line @typescript-eslint/no-explicit-any
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = mockTestStep;
 	});
 
 	test.afterAll(() => {
-		// oxlint-disable-next-line @typescript-eslint/no-explicit-any
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = originalStep;
 	});
 
@@ -194,12 +194,12 @@ test.describe("step decorator - location tracking", () => {
 
 	test.beforeAll(() => {
 		originalStep = (test as { step: typeof test.step }).step;
-		// oxlint-disable-next-line @typescript-eslint/no-explicit-any
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = mockTestStep;
 	});
 
 	test.afterAll(() => {
-		// oxlint-disable-next-line @typescript-eslint/no-explicit-any
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = originalStep;
 	});
 
