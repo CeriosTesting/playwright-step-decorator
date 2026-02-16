@@ -15,7 +15,7 @@ const getCurrentLineNumber = () => {
 
 const mockTestStep = async (
 	desc: string,
-	fn: () => Promise<any>,
+	fn: () => Promise<unknown>,
 	options?: { location?: { file: string; line: number; column: number } }
 ) => {
 	collectedSteps.push(desc);
@@ -27,11 +27,13 @@ test.describe("step decorator", () => {
 	let originalStep: typeof test.step;
 
 	test.beforeAll(() => {
-		originalStep = (test as any).step;
+		originalStep = (test as { step: typeof test.step }).step;
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = mockTestStep;
 	});
 
 	test.afterAll(() => {
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = originalStep;
 	});
 
@@ -191,11 +193,13 @@ test.describe("step decorator - location tracking", () => {
 	let originalStep: typeof test.step;
 
 	test.beforeAll(() => {
-		originalStep = (test as any).step;
+		originalStep = (test as { step: typeof test.step }).step;
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = mockTestStep;
 	});
 
 	test.afterAll(() => {
+		// oxlint-disable-next-line typescript-eslint/no-explicit-any
 		(test as any).step = originalStep;
 	});
 
