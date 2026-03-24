@@ -1,5 +1,11 @@
 # @cerios/playwright-step-decorator
 
+## 2.1.1
+
+### Patch Changes
+
+- d357129: Widen the TypeScript peer dependency range to support TypeScript 6 (`^5.0.2 || ^6.0.0`).
+
 ## 2.1.0
 
 ### Minor Changes
@@ -13,6 +19,7 @@
 - 5a5f8a7: Refactor tooling: replace Prettier with oxfmt and lint-staged with oxlint
 
   This release modernizes the development toolchain by adopting faster, more efficient tooling:
+
   - **Formatting**: Replaced Prettier with oxfmt for faster code formatting
   - **Linting**: Replaced lint-staged + Husky pre-commit hooks with oxlint for type-aware linting
   - **Dependencies**: Updated @playwright/test to ^1.58.1 and other development dependencies
