@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+
 import { step } from "../src/playwright-step-decorator";
 
 const collectedSteps: string[] = [];

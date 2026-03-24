@@ -1,6 +1,3 @@
 {
-	"recommendations": [
-		"ms-playwright.playwright",
-		"oxc.oxc-vscode"
-	]
+	"recommendations": ["ms-playwright.playwright", "oxc.oxc-vscode"]
 }

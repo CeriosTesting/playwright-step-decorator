@@ -1,61 +1,67 @@
 {
 	"name": "@cerios/playwright-step-decorator",
 	"version": "2.1.0",
-	"author": "Ronald Veth - Cerios",
 	"description": "A Playwright decorator for creating step-based tests",
-	"license": "MIT",
 	"keywords": [
-		"playwright",
-		"testing",
 		"decorator",
-		"step"
+		"playwright",
+		"step",
+		"testing"
 	],
+	"homepage": "https://github.com/CeriosTesting/playwright-step-decorator#readme",
 	"bugs": {
 		"url": "https://github.com/CeriosTesting/playwright-step-decorator/issues"
 	},
-	"homepage": "https://github.com/CeriosTesting/playwright-step-decorator#readme",
+	"license": "MIT",
+	"author": "Ronald Veth - Cerios",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/CeriosTesting/playwright-step-decorator.git"
 	},
-	"scripts": {
-		"test": "playwright test",
-		"format": "oxfmt .",
-		"lint": "oxlint --type-aware --type-check",
-		"build": "tsup",
-		"check-exports": "attw --pack .",
-		"changeset": "npx changeset",
-		"changeset:version": "changeset version && npm i",
-		"changeset:publish": "tsup && changeset publish",
-		"update-all-packages": "npx npm-check-updates -u && npm run clean-install",
-		"clean-install": "rm -rf node_modules package-lock.json && npm i"
-	},
-	"devDependencies": {
-		"@arethetypeswrong/cli": "^0.18.2",
-		"@changesets/cli": "^2.29.8",
-		"@playwright/test": "^1.58.1",
-		"oxfmt": "^0.26.0",
-		"oxlint": "^1.41.0",
-		"oxlint-tsgolint": "^0.11.1",
-		"ts-node": "^10.9.2",
-		"tsup": "^8.5.1"
-	},
-	"peerDependencies": {
-		"@playwright/test": "^1.51.0",
-		"typescript": "^5.0.2"
-	},
-	"main": "./dist/index.js",
-	"module": "./dist/index.mjs",
-	"types": "./dist/index.d.ts",
 	"files": [
 		"dist"
 	],
 	"type": "commonjs",
+	"main": "./dist/index.js",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.ts",
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
 			"import": "./dist/index.mjs",
 			"default": "./dist/index.js"
+		}
+	},
+	"scripts": {
+		"build": "tsup",
+		"changeset": "npx changeset",
+		"changeset:publish": "tsup && changeset publish",
+		"changeset:version": "changeset version && npm i",
+		"check-exports": "attw --pack .",
+		"format": "oxfmt",
+		"format:check": "oxfmt --check",
+		"lint": "oxlint --type-aware --type-check",
+		"test": "playwright test",
+		"update-all-packages": "npx npm-check-updates -u && npm i"
+	},
+	"devDependencies": {
+		"@arethetypeswrong/cli": "^0.18.2",
+		"@changesets/cli": "^2.30.0",
+		"@playwright/test": "^1.58.2",
+		"@types/node": "^25.5.0",
+		"oxfmt": "^0.41.0",
+		"oxlint": "^1.56.0",
+		"oxlint-tsgolint": "^0.17.3",
+		"ts-node": "^10.9.2",
+		"tsup": "^8.5.1"
+	},
+	"peerDependencies": {
+		"@playwright/test": "^1.51.0",
+		"typescript": "^5.0.2 || ^6.0.0"
+	},
+	"peerDependenciesMeta": {
+		"typescript": {
+			"optional": true
 		}
 	}
 }
