@@ -1,7 +1,11 @@
 {
-	"editor.formatOnSave": true,
+	"files.eol": "\n",
+	"files.trimTrailingWhitespace": true,
+	"js/ts.tsdk.path": "node_modules/typescript/lib",
+	"js/ts.tsdk.promptToUseWorkspaceVersion": true,
+	"js/ts.preferences.importModuleSpecifier": "non-relative",
 	"editor.defaultFormatter": "oxc.oxc-vscode",
-	"editor.codeActionsOnSave": {
-		"source.fixAll.oxc": "always"
-	}
+	"editor.formatOnSave": true,
+	"oxc.path.oxlint": "node_modules/.bin/oxlint",
+	"oxc.typeAware": true
 }

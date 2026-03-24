@@ -1,4 +1,5 @@
 import test, { expect } from "@playwright/test";
+
 import { MenuPom } from "./pages/menu-page";
 
 test("Happy flow", async ({ page }) => {
