@@ -48,6 +48,7 @@
 		"@arethetypeswrong/cli": "^0.18.2",
 		"@changesets/cli": "^2.30.0",
 		"@playwright/test": "^1.58.2",
+		"@types/node": "^25.5.0",
 		"oxfmt": "^0.41.0",
 		"oxlint": "^1.56.0",
 		"oxlint-tsgolint": "^0.17.3",
