@@ -2,7 +2,7 @@ import { test, TestStepInfo } from "@playwright/test";
 
 const StepSymbol: unique symbol = Symbol("playwrightStep");
 
-type StepMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
+type StepMethod<This, Args extends unknown[], R> = (this: This, ...args: Args) => R;
 /**
  * Decorator to wrap a synchronous or asynchronous method in a Playwright step with a dynamic description.
  *
@@ -28,6 +28,9 @@ type StepMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args
  *   @step("Reset the form")
  *   resetForm(): Promise<void> { return Promise.resolve(); } // No `async` keyword needed (avoids require-await)
  *
+ *   @step("Set value to {{value}}")
+ *   setValue(value: string): void { this.value = value; } // Sync method - no Promise needed
+ *
  *   @step()
  *   async defaultStep() { ... } // Step will be "MyTest.defaultStep"
  * }
@@ -37,11 +40,11 @@ type StepMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args
  * @throws {Error} If property access in a placeholder is invalid.
  */
 export function step(description?: string) {
-	return function <This extends { constructor: { name: string } }, Args extends unknown[], ReturnType>(
-		target: StepMethod<This, Args, ReturnType>,
-		context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
+	return function <This extends { constructor: { name: string } }, Args extends unknown[], R>(
+		target: StepMethod<This, Args, R>,
+		context: ClassMethodDecoratorContext<This, StepMethod<This, Args, R>>
 	) {
-		return function replacementMethod(this: This, ...args: Args) {
+		return function replacementMethod(this: This, ...args: Args): R {
 			const methodName = `${this.constructor.name}.${context.name as string}`;
 			let formattedDescription = methodName;
 			if (description) {
@@ -77,7 +80,7 @@ export function step(description?: string) {
 					}
 				},
 				{ location }
-			);
+			) as unknown as R;
 		};
 	};
 }

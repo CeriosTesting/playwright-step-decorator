@@ -38,4 +38,9 @@ export class MenuPom {
 			contentType: "image/png",
 		});
 	}
+
+	@step("Get the page title")
+	getPageTitle(): string {
+		return this._page.url();
+	}
 }
