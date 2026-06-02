@@ -47,6 +47,13 @@ class MyTest {
 	async clickButton(times: number) {
 		// ...click logic
 	}
+
+	@step("Reset the form")
+	resetForm(): Promise<void> {
+		// No `await` inside and no `async` keyword needed (avoids the require-await lint error)
+		this.dirty = false;
+		return Promise.resolve();
+	}
 }
 ```
 
@@ -54,15 +61,25 @@ class MyTest {
 
 ## How It Works
 
-The `@step` decorator wraps your async function in a Playwright `test.step`, using a dynamic description. Placeholders in the description are replaced with actual argument values at runtime.
+The `@step` decorator wraps your synchronous or asynchronous method in a Playwright `test.step`, using a dynamic description. Placeholders in the description are replaced with actual argument values at runtime.
+
+> **Note:** A decorated method does not need the `async` keyword. If a method body has no `await`, you can drop `async` to avoid the `require-await` lint error. Because the decorated call is wrapped in `test.step` (which is asynchronous) and callers should `await` it, keep the return type a `Promise` and return a resolved promise instead of marking the method `async`:
+>
+> ```typescript
+> @step("Reset the form")
+> resetForm(): Promise<void> {
+> 	this.dirty = false;
+> 	return Promise.resolve(); // no `async`, no require-await warning
+> }
+> ```
 
 ### Placeholders
 
-- **Named parameter**: `{{param}}`  
+- **Named parameter**: `{{param}}`
   Replaced with the value of the parameter named `param`.
-- **Nested property**: `{{param.prop}}`  
+- **Nested property**: `{{param.prop}}`
   Replaced with the value of the property `prop` of parameter `param`.
-- **Index-based**: `[[0]]`, `[[1]]`, ...  
+- **Index-based**: `[[0]]`, `[[1]]`, ...
   Replaced with the argument at the given index.
 
 ---
@@ -140,7 +157,7 @@ The Playwright report will show the step location as `my-test.spec.ts:10`, not t
 
 ## Accessing Step Context (`getStepInfo`)
 
-Sometimes you want to attach files, logs, or metadata to the current Playwright step inside your decorated method.  
+Sometimes you want to attach files, logs, or metadata to the current Playwright step inside your decorated method.
 Use the `getStepInfo` function to access the [`TestStepInfo`](https://playwright.dev/docs/api/class-teststepinfo) object for the current step.
 
 ### Example
