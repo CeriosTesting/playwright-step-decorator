@@ -40,15 +40,16 @@
 	},
 	"scripts": {
 		"build": "tsdown",
-		"changeset": "npx changeset",
-		"changeset:publish": "npm run build && changeset publish",
-		"changeset:version": "changeset version && npm i",
+		"changeset": "changeset",
 		"check-exports": "attw --pack .",
 		"format": "oxfmt",
 		"format:check": "oxfmt --check",
 		"lint": "oxlint --type-aware --type-check",
+		"release": "changeset publish",
 		"test": "playwright test",
-		"update-all-packages": "npx npm-check-updates -u && npm i"
+		"update-all-packages": "npm-check-updates -u && npm i",
+		"version-packages": "changeset version",
+		"version-packages:prepare-release": "npm run version-packages && npm run format"
 	},
 	"devDependencies": {
 		"@arethetypeswrong/cli": "^0.18.3",

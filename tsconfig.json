@@ -12,6 +12,6 @@
 		"noUnusedParameters": true,
 		"skipLibCheck": true,
 		"outDir": "dist",
-		"types": ["node"],
-	},
+		"types": ["node"]
+	}
 }
