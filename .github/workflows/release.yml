@@ -14,14 +14,22 @@ jobs:
       pull-requests: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Show Node and npm versions
+        run: |
+          node -v
+          npm -v
 
       - name: Install dependencies
         run: |
@@ -32,12 +40,15 @@ jobs:
       - name: Build packages
         run: npm run build
 
+      - name: Test
+        run: npm run test
+
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
-          version: npx changeset version
-          publish: npx changeset publish --provenance
+          version: npm run version-packages:prepare-release
+          publish: npm run release
           commit: "chore: version packages"
           title: "chore: version packages"
         env:
