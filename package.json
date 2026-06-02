@@ -22,20 +22,26 @@
 		"dist"
 	],
 	"type": "commonjs",
-	"main": "./dist/index.js",
+	"main": "./dist/index.cjs",
 	"module": "./dist/index.mjs",
-	"types": "./dist/index.d.ts",
+	"types": "./dist/index.d.cts",
 	"exports": {
 		"./package.json": "./package.json",
 		".": {
-			"import": "./dist/index.mjs",
-			"default": "./dist/index.js"
+			"import": {
+				"types": "./dist/index.d.mts",
+				"default": "./dist/index.mjs"
+			},
+			"default": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
 		}
 	},
 	"scripts": {
-		"build": "tsup",
+		"build": "tsdown",
 		"changeset": "npx changeset",
-		"changeset:publish": "tsup && changeset publish",
+		"changeset:publish": "npm run build && changeset publish",
 		"changeset:version": "changeset version && npm i",
 		"check-exports": "attw --pack .",
 		"format": "oxfmt",
@@ -45,15 +51,15 @@
 		"update-all-packages": "npx npm-check-updates -u && npm i"
 	},
 	"devDependencies": {
-		"@arethetypeswrong/cli": "^0.18.2",
-		"@changesets/cli": "^2.30.0",
-		"@playwright/test": "^1.58.2",
-		"@types/node": "^25.5.0",
-		"oxfmt": "^0.41.0",
-		"oxlint": "^1.56.0",
-		"oxlint-tsgolint": "^0.17.3",
+		"@arethetypeswrong/cli": "^0.18.3",
+		"@changesets/cli": "^2.31.0",
+		"@playwright/test": "^1.60.0",
+		"@types/node": "^25.9.1",
+		"oxfmt": "^0.53.0",
+		"oxlint": "^1.68.0",
+		"oxlint-tsgolint": "^0.23.0",
 		"ts-node": "^10.9.2",
-		"tsup": "^8.5.1"
+		"tsdown": "^0.22.1"
 	},
 	"peerDependencies": {
 		"@playwright/test": "^1.51.0",

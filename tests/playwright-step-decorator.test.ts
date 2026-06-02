@@ -71,6 +71,34 @@ test.describe("step decorator", () => {
 		expect(collectedSteps[0]).toBe("MyTestClass.foo");
 	});
 
+	test("should support non-async methods returning a void promise", async () => {
+		const sideEffects: string[] = [];
+		class MyTestClass {
+			@step("Record value")
+			recordValue(value: string): Promise<void> {
+				sideEffects.push(value);
+				return Promise.resolve();
+			}
+		}
+		const instance = new MyTestClass();
+		await instance.recordValue("hello");
+		expect(sideEffects).toEqual(["hello"]);
+		expect(collectedSteps[0]).toBe("Record value");
+	});
+
+	test("should support non-async methods returning a promise", async () => {
+		class MyTestClass {
+			@step("Build greeting for {{name}}")
+			buildGreeting(name: string): Promise<string> {
+				return Promise.resolve(`Hello ${name}`);
+			}
+		}
+		const instance = new MyTestClass();
+		const result = await instance.buildGreeting("Alice");
+		expect(result).toBe("Hello Alice");
+		expect(collectedSteps[0]).toBe("Build greeting for Alice");
+	});
+
 	test("should throw error if description references missing param", async () => {
 		class MyTestClass {
 			@step("Test with {{param2}}")

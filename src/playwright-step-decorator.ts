@@ -2,9 +2,9 @@ import { test, TestStepInfo } from "@playwright/test";
 
 const StepSymbol: unique symbol = Symbol("playwrightStep");
 
-type AsyncMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
+type StepMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 /**
- * Decorator to wrap an async method in a Playwright step with a dynamic description.
+ * Decorator to wrap a synchronous or asynchronous method in a Playwright step with a dynamic description.
  *
  * If no description is provided, the step will use the format: `ClassName.methodName`.
  *
@@ -14,7 +14,7 @@ type AsyncMethod<This, Args extends unknown[], ReturnType> = (this: This, ...arg
  * @template Args The argument types of the decorated method.
  * @template ReturnType The return type of the decorated method.
  * @param description Optional step description, supporting placeholders like `{{param}}`, `{{param.prop}}`, or `[[index]]`.
- * @returns A decorator function that wraps the target async method in a Playwright step.
+ * @returns A decorator function that wraps the target method in a Playwright step.
  *
  * @example
  * ```typescript
@@ -24,6 +24,9 @@ type AsyncMethod<This, Args extends unknown[], ReturnType> = (this: This, ...arg
  *
  *   @step("Click button [[0]] times")
  *   async clickButton(times: number) { ... }
+ *
+ *   @step("Reset the form")
+ *   resetForm(): Promise<void> { return Promise.resolve(); } // No `async` keyword needed (avoids require-await)
  *
  *   @step()
  *   async defaultStep() { ... } // Step will be "MyTest.defaultStep"
@@ -35,8 +38,8 @@ type AsyncMethod<This, Args extends unknown[], ReturnType> = (this: This, ...arg
  */
 export function step(description?: string) {
 	return function <This extends { constructor: { name: string } }, Args extends unknown[], ReturnType>(
-		target: AsyncMethod<This, Args, ReturnType>,
-		context: ClassMethodDecoratorContext<This, AsyncMethod<This, Args, ReturnType>>
+		target: StepMethod<This, Args, ReturnType>,
+		context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
 	) {
 		return function replacementMethod(this: This, ...args: Args) {
 			const methodName = `${this.constructor.name}.${context.name as string}`;
