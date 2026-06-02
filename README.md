@@ -5,6 +5,7 @@ A TypeScript decorator for Playwright that makes your test steps more readable a
 ## Features
 
 - **Decorator syntax** for Playwright steps.
+- **Sync and async support**: Decorate any method regardless of its return type — `void`, `string`, `number`, object, or `Promise<T>`.
 - **Dynamic descriptions**: Use placeholders to inject parameter values into step descriptions.
 - **Supports nested properties**: Reference nested object properties in your descriptions.
 - **Index-based placeholders**: Reference arguments by their position.
@@ -48,6 +49,17 @@ class MyTest {
 		// ...click logic
 	}
 
+	// Truly synchronous — no Promise, no async keyword
+	@step("Set value to {{value}}")
+	setValue(value: string): void {
+		this.inputValue = value;
+	}
+
+	@step("Get the current URL")
+	getPageUrl(): string {
+		return this._page.url();
+	}
+
 	@step("Reset the form")
 	resetForm(): Promise<void> {
 		// No `await` inside and no `async` keyword needed (avoids the require-await lint error)
@@ -61,17 +73,16 @@ class MyTest {
 
 ## How It Works
 
-The `@step` decorator wraps your synchronous or asynchronous method in a Playwright `test.step`, using a dynamic description. Placeholders in the description are replaced with actual argument values at runtime.
+The `@step` decorator wraps your method in a Playwright `test.step`, using a dynamic description. Placeholders in the description are replaced with actual argument values at runtime.
 
-> **Note:** A decorated method does not need the `async` keyword. If a method body has no `await`, you can drop `async` to avoid the `require-await` lint error. Because the decorated call is wrapped in `test.step` (which is asynchronous) and callers should `await` it, keep the return type a `Promise` and return a resolved promise instead of marking the method `async`:
->
-> ```typescript
-> @step("Reset the form")
-> resetForm(): Promise<void> {
-> 	this.dirty = false;
-> 	return Promise.resolve(); // no `async`, no require-await warning
-> }
-> ```
+The decorator supports any return type:
+
+| Method type            | Example return type        | Call site                       |
+| ---------------------- | -------------------------- | ------------------------------- |
+| Async                  | `Promise<void>`            | `await page.login(user)`        |
+| Non-async with Promise | `Promise<void>`            | `await page.resetForm()`        |
+| Sync void              | `void`                     | `page.setValue("hello")`        |
+| Sync value             | `string`, `number`, object | `const url = page.getPageUrl()` |
 
 ### Placeholders
 
@@ -194,7 +205,7 @@ class NavbarTest {
 ### `step(description: string)`
 
 - **description**: The step description, supporting placeholders like `{{param}}`, `{{param.prop}}`, or `[[index]]`.
-- **Returns**: A decorator function for async methods or functions.
+- **Returns**: A method decorator. Works with async methods, non-async methods returning `Promise`, and purely synchronous methods returning any type (`void`, `string`, `number`, objects, etc.).
 
 ---
 
