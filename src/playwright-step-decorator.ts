@@ -842,7 +842,7 @@ function formatDescription(
 				}
 			}
 
-			result = result.replace(`{{${placeholder}}}`, formatPlaceholderValue(value));
+			result = result.replace(`{{${placeholder}}}`, () => formatPlaceholderValue(value));
 		}
 	}
 	return result;
