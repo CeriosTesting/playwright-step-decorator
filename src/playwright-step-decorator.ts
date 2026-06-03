@@ -819,7 +819,7 @@ function formatDescription(
 						`Please check your @step decorator placeholders.`
 				);
 			}
-			result = result.replace(`[[${index}]]`, formatPlaceholderValue(args[index]));
+			result = result.replace(`[[${index}]]`, () => formatPlaceholderValue(args[index]));
 		} else {
 			const parts = placeholder.split(".");
 			const parameter = parameterLookup.get(parts[0]);
