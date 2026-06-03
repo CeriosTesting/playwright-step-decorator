@@ -382,7 +382,7 @@ function parseDefaultValue(defaultValueSource?: string): ParsedDefaultValue | un
 	}
 
 	const parsedDefaultValue = parseLiteralDefaultValue(defaultValueSource);
-	if (parsedDefaultValue) {
+	if (parsedDefaultValue !== undefined || defaultValueSource === "undefined") {
 		return { kind: "resolved", value: parsedDefaultValue };
 	}
 
