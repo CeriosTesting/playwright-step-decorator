@@ -61,11 +61,7 @@ const withMockedErrorStack = async (stack: string, action: () => Promise<void>) 
 	}
 };
 
-const mockTestStep = async (
-	desc: string,
-	fn: (step: TestStepInfo) => Promise<unknown>,
-	options?: MockStepOptions
-) => {
+const mockTestStep = async (desc: string, fn: (step: TestStepInfo) => Promise<unknown>, options?: MockStepOptions) => {
 	collectedSteps.push(desc);
 	collectedLocations.push(options?.location);
 	collectedStepOptions.push(options ? { ...options } : undefined);
