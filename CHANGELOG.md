@@ -1,5 +1,11 @@
 # @cerios/playwright-step-decorator
 
+## 2.2.1
+
+### Patch Changes
+
+- 9870119: Widen the optional TypeScript peer dependency range to `>=5.0.2 <8`.
+
 ## 2.2.0
 
 ### Minor Changes
