@@ -64,7 +64,7 @@
 	},
 	"peerDependencies": {
 		"@playwright/test": "^1.51.0",
-		"typescript": "^5.0.2 || ^6.0.0"
+		"typescript": ">=5.0.2 <8"
 	},
 	"peerDependenciesMeta": {
 		"typescript": {
