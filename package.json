@@ -52,15 +52,16 @@
 		"version-packages:prepare-release": "npm run version-packages && npm run format"
 	},
 	"devDependencies": {
-		"@arethetypeswrong/cli": "^0.18.3",
-		"@changesets/cli": "^2.31.0",
-		"@playwright/test": "^1.60.0",
-		"@types/node": "^25.9.1",
-		"oxfmt": "^0.53.0",
-		"oxlint": "^1.68.0",
-		"oxlint-tsgolint": "^0.23.0",
+		"@arethetypeswrong/cli": "^0.18.5",
+		"@changesets/cli": "^3.0.3",
+		"@playwright/test": "^1.63.0",
+		"@types/node": "^26.6.3",
+		"npm-check-updates": "^23.1.0",
+		"oxfmt": "^0.70.0",
+		"oxlint": "^1.85.0",
+		"oxlint-tsgolint": "^7.0.2003",
 		"ts-node": "^10.9.2",
-		"tsdown": "^0.22.1"
+		"tsdown": "^0.23.0"
 	},
 	"peerDependencies": {
 		"@playwright/test": "^1.51.0",
