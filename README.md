@@ -143,8 +143,6 @@ The `@step` decorator wraps your promise-returning method in a Playwright `test.
 - **Index-based**: `[[0]]`, `[[1]]`, ...
   Replaced with the argument at the given index.
 
-If a method uses destructured parameters, prefer index placeholders such as `[[0]]`. The decorator cannot reliably map destructured bindings like `{ name }` back to a placeholder name such as `{{name}}`.
-
 When a placeholder resolves to an object or array, the decorator renders it as JSON when possible so reports stay readable.
 
 ---
