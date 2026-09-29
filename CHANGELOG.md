@@ -1,5 +1,11 @@
 # @cerios/playwright-step-decorator
 
+## 2.2.2
+
+### Patch Changes
+
+- ad6ea44: Update development dependencies, including Playwright, Changesets, Node.js typings, and the formatting, linting, and build tools. Add `npm-check-updates` for managing dependency updates.
+
 ## 2.2.1
 
 ### Patch Changes
