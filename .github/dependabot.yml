@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      all-dependencies:
+        patterns:
+          - "*"
+        applies-to: version-updates
+      security-updates:
+        patterns:
+          - "*"
+        applies-to: security-updates
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    groups:
+      all-github-actions:
+        patterns:
+          - "*"
