@@ -57,7 +57,7 @@
 		"@playwright/test": "^1.63.0",
 		"@types/node": "^26.6.3",
 		"npm-check-updates": "^23.1.0",
-		"oxfmt": "^0.70.0",
+		"oxfmt": "^0.71.0",
 		"oxlint": "^1.85.0",
 		"oxlint-tsgolint": "^7.0.2003",
 		"ts-node": "^10.9.2",
