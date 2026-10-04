@@ -1,0 +1,57 @@
+name: Dependabot changeset
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  changeset:
+    name: Add patch changeset
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Create patch changeset
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          node <<'NODE'
+          const { execSync } = require("node:child_process");
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const file = `.changeset/dependabot-${process.env.PR_NUMBER}.md`;
+          if (fs.existsSync(file)) process.exit(0);
+
+          const changed = execSync(`git diff --name-only origin/${process.env.BASE_REF}...HEAD`, { encoding: "utf8" })
+            .split("\n")
+            .filter(f => f.endsWith("package.json"));
+
+          const names = new Set();
+          for (const f of changed) {
+            const pkg = JSON.parse(fs.readFileSync(f, "utf8"));
+            if (pkg.name && !pkg.private) names.add(pkg.name);
+          }
+          if (names.size === 0) process.exit(0);
+
+          const body = [...names].map(n => `"${n}": patch`).join("\n");
+          fs.writeFileSync(file, `---\n${body}\n---\n\nUpdate dependencies\n`);
+          NODE
+
+      - name: Commit changeset
+        run: |
+          if [ -n "$(git status --porcelain .changeset)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .changeset
+            git commit -m "chore: add changeset"
+            git push
+          fi
