@@ -8,6 +8,7 @@ A TypeScript decorator for Playwright that makes your test steps more readable a
 - **Dynamic descriptions**: Use placeholders to inject parameter values into step descriptions.
 - **Supports nested properties**: Reference nested object properties in your descriptions.
 - **Index-based placeholders**: Reference arguments by their position.
+- **Type-safe value placeholders**: `__key__` placeholders are filled by lambdas whose parameters are inferred from the decorated method. You get full autocompletion, and the compiler checks that every key has exactly one selector.
 - **Better parameter matching**: Named placeholders now handle default values and rest parameters more reliably.
 - **Readable complex values**: Objects and arrays are rendered as JSON in step descriptions when possible.
 - **Forwards Playwright step options**: Pass `box`, `timeout`, or a custom `location` to `test.step()`.
@@ -142,6 +143,8 @@ The `@step` decorator wraps your promise-returning method in a Playwright `test.
   Replaced with the value of the property `prop` of parameter `param`.
 - **Index-based**: `[[0]]`, `[[1]]`, ...
   Replaced with the argument at the given index.
+- **Value selector**: `__key__` (for example `__0__` or `__role__`)
+  Replaced with the result of the matching lambda in the `values` option. See [Value Selector Placeholders](#4-value-selector-placeholders).
 
 When a placeholder resolves to an object or array, the decorator renders it as JSON when possible so reports stay readable.
 
@@ -182,6 +185,46 @@ await example('Bob', 77);
 // Step description: "Named: Bob, Index: 77"
 ```
 
+### 4. Value Selector Placeholders
+
+Use `__key__` placeholders when the step text needs something computed from the arguments, such as one item of an array, a filtered list, or a conditional label. Each key maps to a lambda in the `values` option. The lambda receives the method's arguments **with their real types**, so your editor autocompletes them and the compiler checks them:
+
+```typescript
+type Contact = { name: string; email: string; primary: boolean };
+type User = { name: string; role: string; contacts: Contact[] };
+
+class ContactsPage {
+	@step("Add contacts for __0__ (second: __second__, primary: __primary__)", {
+		values: {
+			0: user => user.name, // user: User
+			second: (_user, contacts) => contacts[1].email, // contacts: Contact[]
+			primary: user =>
+				user.contacts
+					.filter(c => c.primary)
+					.map(c => c.name)
+					.join(", "),
+		},
+	})
+	async addContacts(user: User, contacts: Contact[]) {
+		// ...
+	}
+}
+// Step description: "Add contacts for Alice (second: carol@example.com, primary: Bob, Dave)"
+```
+
+For a literal description, the compiler enforces:
+
+- every `__key__` in the description has a selector in `values` (leaving out `values` is an error too),
+- `values` contains no keys that aren't in the description,
+- each lambda's parameters match the decorated method's parameters. Explicit annotations such as `(user: User) => ...` are allowed, but they must match.
+
+Notes:
+
+- Keys can be numeric (`__0__` → `{ 0: ... }`) or names (`__role__` → `{ role: ... }`). Keys are any text between `__` and `__` without whitespace. Empty or whitespace spans such as `a __ b __ c` stay as literal text.
+- Lambdas receive the arguments exactly as passed; omitted optional arguments are `undefined`.
+- The returned value is formatted like any other placeholder (strings as-is, objects as JSON).
+- If the description is a plain `string` variable instead of a literal, keys can't be checked at compile time. A missing selector then throws at runtime.
+
 ---
 
 ## Accurate Source Locations in Reports
@@ -216,6 +259,8 @@ The Playwright report will show the step location as `my-test.spec.ts:10`, not t
 - Throws a targeted error when named placeholders are used with destructured or otherwise unsupported parameter syntax, and suggests using index placeholders instead.
 - Throws if a nested property does not exist on the parameter.
 - Throws if an index placeholder is out of bounds.
+- Throws if a `__key__` placeholder has no selector in `values`. This is a compile-time error for literal descriptions.
+- If a `values` selector throws, the decorator rethrows a descriptive error with the original error as `cause`.
 
 ---
 
@@ -260,6 +305,17 @@ class NavbarTest {
 
 - **description**: The step description, supporting placeholders like `{{param}}`, `{{param.prop}}`, or `[[index]]`.
 - **Returns**: A decorator function for promise-returning methods.
+
+### `step(description: string, options)`
+
+- **options.box / options.timeout / options.location**: Forwarded to Playwright's `test.step()`.
+- **options.values**: An object mapping each `__key__` placeholder in the description to a lambda `(...methodArgs) => unknown`. It's required when a literal description contains `__key__` placeholders.
+
+### `step(options)`
+
+- **options**: Playwright step options; the step uses the default `ClassName.methodName` description.
+
+Exported helper types: `StepOptions`, `StepValueSelector<Args>`, `StepValues<Description, Args>`, `StepOptionsWithValues<Description, Args>`, and `ValuePlaceholderKeys<Description>`.
 
 ### `getStepInfo()`
 

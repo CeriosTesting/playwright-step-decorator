@@ -8,16 +8,69 @@ const stepContext = new AsyncLocalStorage<TestStepInfo>();
 
 type StepMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 type NonFunctionValue<T> = T extends (...args: unknown[]) => unknown ? never : T;
-type StepOptions = {
+/**
+ * Playwright `test.step()` options forwarded by the `@step` decorator.
+ */
+export type StepOptions = {
 	box?: boolean;
 	location?: Location;
 	timeout?: number;
 };
-type StepDescriptionOrOptions = string | StepOptions;
+/**
+ * Blocks inference from a position (polyfill for the built-in `NoInfer`, which requires TypeScript 5.4+).
+ */
+type NoInferArgs<T> = [T][T extends unknown ? 0 : never];
+/**
+ * A lambda that receives the decorated method's arguments and returns the value printed for a `__key__` placeholder.
+ */
+export type StepValueSelector<Args extends unknown[]> = (...args: NoInferArgs<Args>) => unknown;
+/**
+ * Extracts the keys of all `__key__` placeholders from a literal description type.
+ * Empty keys and keys containing whitespace are skipped (their closing `__` may open the next placeholder),
+ * matching the runtime behaviour.
+ */
+export type ValuePlaceholderKeys<Description extends string> =
+	Description extends `${string}__${infer Key}__${infer Rest}`
+		? Key extends "" | `${string}${" " | "\t" | "\n"}${string}`
+			? ValuePlaceholderKeys<`__${Rest}`>
+			: Key | ValuePlaceholderKeys<Rest>
+		: never;
+/**
+ * The `values` option for a given description: one selector per `__key__` placeholder.
+ */
+export type StepValues<Description extends string, Args extends unknown[]> = string extends Description
+	? Record<string, StepValueSelector<Args>>
+	: { [Key in ValuePlaceholderKeys<Description>]: StepValueSelector<Args> };
+/**
+ * Step options including the `values` selectors for `__key__` placeholders.
+ */
+export type StepOptionsWithValues<Description extends string, Args extends unknown[]> = StepOptions & {
+	values: StepValues<Description, Args>;
+};
+type PlainDescription<Description extends string> = string extends Description
+	? Description
+	: [ValuePlaceholderKeys<Description>] extends [never]
+		? Description
+		: never;
+type StepDecorator<Args extends unknown[]> = <This, ReturnType>(
+	target: StepMethod<This, Args, ReturnType>,
+	context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
+) => StepMethod<This, Args, ReturnType>;
+type GenericStepDecorator = <This, Args extends unknown[], ReturnType>(
+	target: StepMethod<This, Args, ReturnType>,
+	context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
+) => StepMethod<This, Args, ReturnType>;
+type RuntimeStepOptions = StepOptions & { values?: Record<string, (...args: unknown[]) => unknown> };
+type StepDescriptionOrOptions = string | RuntimeStepOptions;
 type ParsedDefaultValue = { kind: "resolved"; value: unknown } | { kind: "unresolved"; source: string };
 type ParsedParameter =
 	| { kind: "named"; defaultValue?: ParsedDefaultValue; index: number; isRest: boolean; name: string }
 	| { kind: "unsupported"; index: number; source: string };
+type PlaceholderToken = { end: number; start: number } & (
+	| { kind: "named"; path: string }
+	| { index: number; kind: "index" }
+	| { key: string; kind: "value" }
+);
 type NamedParameterLookup = ReadonlyMap<string, { defaultValue?: ParsedDefaultValue; index: number; isRest: boolean }>;
 
 let decoratorModulePath: string | undefined;
@@ -40,6 +93,10 @@ export function stepResult(valueOrFactory?: unknown) {
  * If no description is provided, the step will use the format: `ClassName.methodName`.
  *
  * Placeholders in the description (e.g. `{{user.name}}` or `[[0]]`) will be replaced with actual argument values at runtime.
+ *
+ * `__key__` placeholders are replaced with the result of the matching lambda in the `values` option. Each lambda
+ * receives the decorated method's arguments with their real types, and the compiler checks that every `__key__`
+ * in a literal description has exactly one matching selector.
  *
  * @template This The type of the class instance.
  * @template Args The argument types of the decorated method.
@@ -73,6 +130,14 @@ export function stepResult(valueOrFactory?: unknown) {
  *     });
  *   }
  *
+ *   @step("Login as __name__ (contact: __second__)", {
+ *     values: {
+ *       name: (user) => user.name,                 // user: { name: string } (inferred)
+ *       second: (_user, contacts) => contacts[1],  // contacts: string[] (inferred)
+ *     },
+ *   })
+ *   async loginWithContacts(user: { name: string }, contacts: string[]) { ... }
+ *
  *   @step()
  *   async defaultStep() { ... } // Step will be "MyTest.defaultStep"
  * }
@@ -80,18 +145,28 @@ export function stepResult(valueOrFactory?: unknown) {
  *
  * @throws {Error} If placeholders reference missing or out-of-bounds parameters.
  * @throws {Error} If property access in a placeholder is invalid.
+ * @throws {Error} If a `__key__` placeholder has no selector in `values`, or its selector throws.
  */
-export function step(): ReturnType<typeof createStepDecorator>;
-export function step(options: StepOptions): ReturnType<typeof createStepDecorator>;
-export function step(description: string, options?: StepOptions): ReturnType<typeof createStepDecorator>;
-export function step(descriptionOrOptions?: StepDescriptionOrOptions, options?: StepOptions) {
+export function step(): GenericStepDecorator;
+export function step(options: StepOptions): GenericStepDecorator;
+export function step<const Description extends string, Args extends unknown[]>(
+	description: Description,
+	options: StepOptionsWithValues<Description, Args>
+): StepDecorator<Args>;
+export function step<const Description extends string>(
+	description: PlainDescription<Description>,
+	options?: StepOptions
+): GenericStepDecorator;
+export function step(descriptionOrOptions?: StepDescriptionOrOptions, options?: RuntimeStepOptions) {
 	const description = typeof descriptionOrOptions === "string" ? descriptionOrOptions : undefined;
 	const resolvedOptions = typeof descriptionOrOptions === "string" ? options : (descriptionOrOptions ?? options);
 
 	return createStepDecorator(description, resolvedOptions);
 }
 
-function createStepDecorator(description?: string, options?: StepOptions) {
+function createStepDecorator(description?: string, options?: RuntimeStepOptions) {
+	const { values, ...stepOptions } = options ?? {};
+
 	return function <This extends { constructor: { name: string } }, Args extends unknown[], ReturnType>(
 		target: StepMethod<This, Args, ReturnType>,
 		context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
@@ -100,13 +175,13 @@ function createStepDecorator(description?: string, options?: StepOptions) {
 			const methodName = `${this.constructor.name}.${context.name as string}`;
 			let formattedDescription = methodName;
 			if (description) {
-				const placeholders = getPlaceholders(description);
-				const parameterLookup = createNamedParameterLookup(target, methodName, placeholders);
+				const tokens = tokenizeDescription(description);
+				const parameterLookup = createNamedParameterLookup(target, methodName, tokens);
 
-				formattedDescription = formatDescription(methodName, description, placeholders, parameterLookup, args);
+				formattedDescription = formatDescription(methodName, description, tokens, parameterLookup, args, values);
 			}
 
-			const location = options?.location ?? captureCallSiteLocation();
+			const location = stepOptions.location ?? captureCallSiteLocation();
 
 			return test.step(
 				formattedDescription,
@@ -122,7 +197,7 @@ function createStepDecorator(description?: string, options?: StepOptions) {
 						}
 					});
 				},
-				{ ...options, location }
+				{ ...stepOptions, location }
 			);
 		};
 	};
@@ -251,21 +326,62 @@ function getDecoratorModulePath(): string | undefined {
 	return undefined;
 }
 
-function getPlaceholders(description: string): string[] {
-	const curlyMatches = Array.from(description.matchAll(/\{\{(.*?)\}\}/g)).map(m => m[1]);
-	const squareMatches = Array.from(description.matchAll(/\[\[(\d+)\]\]/g)).map(m => `[[${m[1]}]]`);
-	return [...curlyMatches, ...squareMatches];
+/**
+ * Splits a description into placeholder tokens, ordered by position.
+ *
+ * `__key__` spans are located first using the same rule as the `ValuePlaceholderKeys` type: find the next `__`,
+ * take everything up to the following `__` as the key, and accept it when it is non-empty and has no whitespace.
+ * An invalid span is skipped and its closing `__` may open the next span.
+ * `{{path}}` and `[[index]]` placeholders that overlap a `__key__` span are ignored.
+ */
+function tokenizeDescription(description: string): PlaceholderToken[] {
+	const valueTokens: PlaceholderToken[] = [];
+	let searchFrom = 0;
+	while (searchFrom < description.length) {
+		const open = description.indexOf("__", searchFrom);
+		if (open === -1) break;
+		const close = description.indexOf("__", open + 2);
+		if (close === -1) break;
+
+		const key = description.slice(open + 2, close);
+		if (isValidValuePlaceholderKey(key)) {
+			valueTokens.push({ kind: "value", key, start: open, end: close + 2 });
+			searchFrom = close + 2;
+		} else {
+			searchFrom = close;
+		}
+	}
+
+	const overlapsValueToken = (start: number, end: number) =>
+		valueTokens.some(token => start < token.end && token.start < end);
+
+	const argumentTokens: PlaceholderToken[] = [];
+	for (const match of description.matchAll(/\{\{(.*?)\}\}|\[\[(\d+)\]\]/g)) {
+		const start = match.index ?? 0;
+		const end = start + match[0].length;
+		if (overlapsValueToken(start, end)) continue;
+
+		if (match[1] !== undefined) {
+			argumentTokens.push({ kind: "named", path: match[1], start, end });
+		} else {
+			argumentTokens.push({ kind: "index", index: parseInt(match[2], 10), start, end });
+		}
+	}
+
+	return [...valueTokens, ...argumentTokens].sort((a, b) => a.start - b.start);
+}
+
+function isValidValuePlaceholderKey(key: string): boolean {
+	return key !== "" && !/[ \t\n]/u.test(key);
 }
 
 function createNamedParameterLookup(
 	target: Function,
 	methodName: string,
-	placeholders: string[]
+	tokens: PlaceholderToken[]
 ): Map<string, { defaultValue?: ParsedDefaultValue; index: number; isRest: boolean }> {
 	const namedPlaceholderRoots = Array.from(
-		new Set(
-			placeholders.filter(placeholder => !placeholder.startsWith("[[")).map(placeholder => placeholder.split(".")[0])
-		)
+		new Set(tokens.flatMap(token => (token.kind === "named" ? [token.path.split(".")[0]] : [])))
 	);
 	if (namedPlaceholderRoots.length === 0) {
 		return new Map();
@@ -804,48 +920,105 @@ function summarizeParameterSource(source: string): string {
 function formatDescription(
 	methodName: string,
 	description: string,
-	placeholders: string[],
+	tokens: PlaceholderToken[],
 	parameterLookup: NamedParameterLookup,
-	args: unknown[]
+	args: unknown[],
+	values?: Record<string, (...args: unknown[]) => unknown>
 ): string {
-	let result = description;
-	for (const placeholder of placeholders) {
-		if (placeholder.startsWith("[[") && placeholder.endsWith("]]")) {
-			const index = parseInt(placeholder.slice(2, -2), 10);
-			if (isNaN(index) || index < 0 || index >= args.length) {
-				throw new Error(
-					`Parameter index '${index}' is out of bounds in method '${methodName}'. ` +
-						`This method received ${args.length} argument(s), but the @step decorator references index ${index}. ` +
-						`Please check your @step decorator placeholders.`
-				);
-			}
-			result = result.replace(`[[${index}]]`, () => formatPlaceholderValue(args[index]));
+	// Resolve named placeholders first, then index placeholders, then value placeholders, so error precedence
+	// stays the same as before. The description is then assembled in a single pass over the original string,
+	// which means substituted values are never scanned for placeholders again.
+	const kindOrder: Record<PlaceholderToken["kind"], number> = { named: 0, index: 1, value: 2 };
+	const resolved = new Map<PlaceholderToken, string>();
+	for (const token of [...tokens].sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind])) {
+		resolved.set(
+			token,
+			formatPlaceholderValue(resolvePlaceholderToken(methodName, token, parameterLookup, args, values))
+		);
+	}
+
+	let result = "";
+	let cursor = 0;
+	for (const token of tokens) {
+		result += description.slice(cursor, token.start) + resolved.get(token);
+		cursor = token.end;
+	}
+	return result + description.slice(cursor);
+}
+
+function resolvePlaceholderToken(
+	methodName: string,
+	token: PlaceholderToken,
+	parameterLookup: NamedParameterLookup,
+	args: unknown[],
+	values?: Record<string, (...args: unknown[]) => unknown>
+): unknown {
+	if (token.kind === "index") {
+		const index = token.index;
+		if (isNaN(index) || index < 0 || index >= args.length) {
+			throw new Error(
+				`Parameter index '${index}' is out of bounds in method '${methodName}'. ` +
+					`This method received ${args.length} argument(s), but the @step decorator references index ${index}. ` +
+					`Please check your @step decorator placeholders.`
+			);
+		}
+		return args[index];
+	}
+
+	if (token.kind === "value") {
+		return resolveValuePlaceholder(methodName, token.key, args, values);
+	}
+
+	const placeholder = token.path;
+	const parts = placeholder.split(".");
+	const parameter = parameterLookup.get(parts[0]);
+	if (!parameter) {
+		throw new Error(
+			`Missing function parameters (${parts[0]}) in method '${methodName}'. Please check your @step decorator placeholders.`
+		);
+	}
+	let value: unknown = resolveNamedParameterValue(methodName, parts[0], placeholder, parameter, args);
+
+	for (let i = 1; i < parts.length; i++) {
+		if (value && typeof value === "object" && parts[i] in value) {
+			value = (value as Record<string, unknown>)[parts[i]];
 		} else {
-			const parts = placeholder.split(".");
-			const parameter = parameterLookup.get(parts[0]);
-			if (!parameter) {
-				throw new Error(
-					`Missing function parameters (${parts[0]}) in method '${methodName}'. Please check your @step decorator placeholders.`
-				);
-			}
-			let value: unknown = resolveNamedParameterValue(methodName, parts[0], placeholder, parameter, args);
-
-			for (let i = 1; i < parts.length; i++) {
-				if (value && typeof value === "object" && parts[i] in value) {
-					value = (value as Record<string, unknown>)[parts[i]];
-				} else {
-					throw new Error(
-						`Invalid @step placeholder '{{${placeholder}}}' in method '${methodName}': ` +
-							`Property '${parts[i]}' does not exist on parameter '${parts[0]}'. ` +
-							`Please check your @step decorator placeholders.`
-					);
-				}
-			}
-
-			result = result.replace(`{{${placeholder}}}`, () => formatPlaceholderValue(value));
+			throw new Error(
+				`Invalid @step placeholder '{{${placeholder}}}' in method '${methodName}': ` +
+					`Property '${parts[i]}' does not exist on parameter '${parts[0]}'. ` +
+					`Please check your @step decorator placeholders.`
+			);
 		}
 	}
-	return result;
+
+	return value;
+}
+
+function resolveValuePlaceholder(
+	methodName: string,
+	key: string,
+	args: unknown[],
+	values?: Record<string, (...args: unknown[]) => unknown>
+): unknown {
+	const selector = values && Object.prototype.hasOwnProperty.call(values, key) ? values[key] : undefined;
+	if (typeof selector !== "function") {
+		throw new Error(
+			`Missing value selector for placeholder '__${key}__' in method '${methodName}'. ` +
+				`Add a '${key}' entry to the "values" option of the @step decorator.`
+		);
+	}
+
+	try {
+		return selector(...args);
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		const wrapped = new Error(
+			`Value selector for placeholder '__${key}__' in method '${methodName}' threw: ${message}`
+		);
+		// Set `cause` manually: the `Error(message, { cause })` overload is not part of the ES2019 lib this package targets.
+		Object.defineProperty(wrapped, "cause", { configurable: true, enumerable: false, value: error, writable: true });
+		throw wrapped;
+	}
 }
 
 function resolveNamedParameterValue(
