@@ -34,6 +34,21 @@ npm install --save-dev @cerios/playwright-step-decorator
 
 `@step` is a standard ECMAScript decorator for class methods. Playwright's transpiler supports this out of the box. If you compile your tests with `tsc`, make sure `experimentalDecorators` is not enabled: `@step` then has no effect, and no step is reported.
 
+**Symbol-named methods:** the Babel version bundled with Playwright throws `Cannot convert a Symbol value to a string` for any decorator on a method named with a symbol, before the decorator runs. Decorate a method with a normal name and call it from the symbol-named one:
+
+```typescript
+class MyTest {
+	@step("Iterate over {{items}}")
+	async iterate(items: string[]) {
+		// ...
+	}
+
+	[run](items: string[]) {
+		return this.iterate(items);
+	}
+}
+```
+
 ### Import the Decorator
 
 ```typescript
@@ -148,9 +163,23 @@ The `@step` decorator wraps your promise-returning method in a Playwright `test.
 - **Value selector**: `__key__` (for example `__0__` or `__role__`)
   Replaced with the result of the matching lambda in the `values` option. Without `values`, `__key__` is literal text. See [Value Selector Placeholders](#4-value-selector-placeholders).
 
-When a placeholder resolves to an object or array, the decorator renders it as JSON when possible so reports stay readable. Regular expressions, errors, `Map`s and `Set`s are printed in a readable form, and very large values use a shorter, depth-limited form.
+When a placeholder resolves to an object or array, the decorator renders it as JSON when possible so reports stay readable. Regular expressions, errors, `Map`s and `Set`s are printed in a readable form, and very large objects use a shorter, depth-limited form. Each placeholder adds at most 1,000 characters to the title; longer values end with a note such as `… (500 more characters)`.
 
-Named placeholders read the parameter names from the method's source. If another decorator sits below `@step`, `@step` sees that decorator's wrapper function rather than your parameters, so use index placeholders such as `[[0]]` instead.
+Nested properties also work on strings, numbers and functions, for example `{{name.length}}`.
+
+Named placeholders read the parameter names from the method's source, so keep `@step` directly above the method when you combine it with other decorators:
+
+```typescript
+class MyTest {
+	@retry() // Other decorators go above @step
+	@step("Login as {{user.name}}")
+	async login(user: { name: string }) {
+		// ...
+	}
+}
+```
+
+If another decorator sits below `@step`, `@step` sees that decorator's wrapper function rather than your parameters. A placeholder then fails with an error, or reads the wrapper's parameter if the names happen to match.
 
 ---
 
@@ -235,6 +264,7 @@ Notes:
 - Keys can be numeric (`__0__` → `{ 0: ... }`) or names (`__role__` → `{ role: ... }`). Keys are any text between `__` and `__` without whitespace, braces or square brackets. Other spans, such as `a __ b __ c` or `report__{{date}}__final`, stay as literal text.
 - To print literal `__text__` in a description that also uses `values`, return it from a selector: `{ literal: () => "__text__" }`. A parameter name that contains a complete `__key__`, such as `{{a__b__c}}`, can't be used alongside `values`, so use an index placeholder for it.
 - Lambdas receive the arguments exactly as passed; omitted optional arguments are `undefined`.
+- Lambdas must be synchronous, because they run before the step starts. A lambda that returns a promise causes an error.
 - A lambda that returns `null` or `undefined` prints `null` or `undefined`. For nullable parameters, use optional chaining (`user => user?.name`), which the compiler requires when the parameter's type allows `null` or `undefined`.
 - The returned value is formatted like any other placeholder (strings as-is, objects as JSON).
 - If the description is a plain `string` variable instead of a literal, keys can't be checked at compile time. A missing selector then throws at runtime.
@@ -269,14 +299,22 @@ The Playwright report will show the step location as `my-test.spec.ts:10`, not t
 
 ## Error Handling
 
-If a description can't be resolved, the promise returned by the decorated method rejects and the step doesn't start. This happens when:
+**When the class is defined:** a description that can never work throws as soon as the file containing the class loads, so a typo is found even if the method is never called. This happens when:
 
 - A named parameter in the description does not exist in the function signature.
 - Named placeholders are used with destructured or otherwise unsupported parameter syntax. The error suggests using index placeholders instead.
-- A nested property does not exist on the parameter. If the parameter (or an intermediate property) is `null` or `undefined`, the placeholder prints `null` or `undefined` instead.
-- An index placeholder is out of bounds.
-- A `__key__` placeholder has no selector in `values`. This is a compile-time error for literal descriptions.
+- An index placeholder is beyond the declared parameters. Methods with rest parameters or that use `arguments` are checked at call time instead.
+- A `__key__` placeholder has no selector in `values`. This is also a compile-time error for literal descriptions.
+
+Because the class name isn't known yet, these errors name only the method.
+
+**When the method is called:** if a description can't be resolved for a particular call, the promise returned by the decorated method rejects and the step doesn't start. This happens when:
+
+- A nested property does not exist on the parameter. If the parameter (or an intermediate property) is `null` or `undefined`, the placeholder prints `null` or `undefined` instead. The same goes for a property missing from an omitted object default.
+- An index placeholder is beyond the arguments that were passed.
+- An omitted argument has a default value that can't be printed. Literals can be printed, including objects and arrays made only of literals, such as `{ timeout: 5, tags: ["a"] }`. Anything that needs evaluating can't, such as `Mode.Auto`, `{ timeout: DEFAULT_TIMEOUT }` or `{ ...base }`.
 - A `values` selector throws. The rejection is a descriptive error with the original error as `cause`.
+- A `values` selector returns a promise.
 
 ---
 

@@ -4,7 +4,11 @@ import { inspect } from "node:util";
 import { test, TestStepInfo } from "@playwright/test";
 import type { Location } from "@playwright/test";
 
-const stepContext = new AsyncLocalStorage<TestStepInfo>();
+// Shared through the global symbol registry because a process can load both the CJS and ESM builds of this package,
+// and `getStepInfo()` in one build must see steps started by the other.
+const STEP_CONTEXT_KEY = Symbol.for("@cerios/playwright-step-decorator.stepContext");
+const globalStore = globalThis as unknown as Record<symbol, AsyncLocalStorage<TestStepInfo> | undefined>;
+const stepContext = (globalStore[STEP_CONTEXT_KEY] ??= new AsyncLocalStorage<TestStepInfo>());
 
 type StepMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
 type NonFunctionValue<T> = T extends ((...args: never[]) => unknown) | (abstract new (...args: never[]) => unknown)
@@ -76,6 +80,10 @@ type NamedParameterLookup = ReadonlyMap<string, { defaultValue?: ParsedDefaultVa
  */
 const MAX_SERIALIZED_VALUES = 10_000;
 const INSPECT_OPTIONS = { breakLength: Infinity, depth: 2 };
+/**
+ * The most characters a single placeholder adds to a step title. Longer values are cut off with a note.
+ */
+const MAX_PLACEHOLDER_LENGTH = 1_000;
 
 let decoratorModulePath: string | undefined;
 
@@ -147,10 +155,15 @@ export function stepResult(valueOrFactory?: unknown) {
  * }
  * ```
  *
- * The decorated method's promise rejects with an error, before the step starts, in these cases:
- * - A placeholder references a missing or out-of-bounds parameter.
- * - Property access in a placeholder is invalid.
- * - A `__key__` placeholder has no selector in `values`, or its selector throws.
+ * The decorator throws when the class is defined if a description can never be resolved:
+ * - A named placeholder doesn't match a parameter.
+ * - An index placeholder is beyond the declared parameters of a method without rest parameters.
+ * - A `__key__` placeholder has no selector in `values`.
+ *
+ * The decorated method's promise rejects, before the step starts, if a description can't be resolved for a call:
+ * - An index placeholder is beyond the arguments that were passed.
+ * - A property in a placeholder doesn't exist, or an omitted default value can't be printed.
+ * - A selector throws or returns a promise. Selectors must be synchronous.
  */
 export function step(): GenericStepDecorator;
 export function step(options: StepOptions): GenericStepDecorator;
@@ -173,16 +186,20 @@ function createStepDecorator(description?: string, options?: RuntimeStepOptions)
 		target: StepMethod<This, Args, ReturnType>,
 		context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
 	) {
-		// Async so that an unresolvable description rejects the returned promise instead of throwing synchronously.
+		// Everything that depends only on the source runs here, once, so a broken description fails when the class is
+		// defined. The class name isn't available yet, so these errors name only the method.
+		const definitionName = String(context.name);
+		const tokens = description ? tokenizeDescription(description, values !== undefined) : [];
+		const parameterLookup = createNamedParameterLookup(target, definitionName, tokens);
+		validateIndexPlaceholders(target, definitionName, tokens);
+		validateValueSelectors(definitionName, tokens, values);
+
+		// Async so that a description that can't be resolved for this call rejects instead of throwing synchronously.
 		return async function replacementMethod(this: This, ...args: Args) {
 			const methodName = getMethodName(this, context);
-			let formattedDescription = methodName;
-			if (description) {
-				const tokens = tokenizeDescription(description, values !== undefined);
-				const parameterLookup = createNamedParameterLookup(target, methodName, tokens);
-
-				formattedDescription = formatDescription(methodName, description, tokens, parameterLookup, args, values);
-			}
+			const formattedDescription = description
+				? formatDescription(methodName, description, tokens, parameterLookup, args, values)
+				: methodName;
 
 			const location = stepOptions.location ?? captureCallSiteLocation();
 
@@ -439,12 +456,71 @@ function createNamedParameterLookup(
 			);
 		}
 
+		const onlyRestParameter =
+			parsedParameters.length === 1 && parsedParameters[0].kind === "named" && parsedParameters[0].isRest;
 		throw new Error(
-			`Missing function parameters (${missingParams.join(", ")}) in method '${methodName}'. Please check your @step decorator placeholders.`
+			`Missing function parameters (${missingParams.join(", ")}) in method '${methodName}'. Please check your @step decorator placeholders.` +
+				(onlyRestParameter
+					? ` If another decorator sits below @step, move @step directly above the method so it can read the real parameters.`
+					: "")
 		);
 	}
 
 	return parameterLookup;
+}
+
+/**
+ * Rejects index placeholders that no call could satisfy. Rest parameters, `arguments` and native or bound functions
+ * can all receive more arguments than the source declares, so those are left to the check at call time.
+ */
+function validateIndexPlaceholders(target: Function, methodName: string, tokens: PlaceholderToken[]): void {
+	const indexes = tokens.flatMap(token => (token.kind === "index" ? [token.index] : []));
+	if (indexes.length === 0) {
+		return;
+	}
+
+	const source = target.toString();
+	if (source.includes("[native code]") || /\barguments\b/u.test(source)) {
+		return;
+	}
+
+	const parameters = parseFunctionParameters(target);
+	if (!parameters || parameters.some(isRestParameter)) {
+		return;
+	}
+
+	const outOfBounds = indexes.find(index => index >= parameters.length);
+	if (outOfBounds !== undefined) {
+		throw new Error(
+			`Parameter index '${outOfBounds}' is out of bounds in method '${methodName}'. ` +
+				`This method declares ${parameters.length} parameter(s), but the @step decorator references index ${outOfBounds}. ` +
+				`Please check your @step decorator placeholders.`
+		);
+	}
+}
+
+function isRestParameter(parameter: ParsedParameter): boolean {
+	return parameter.kind === "named" ? parameter.isRest : parameter.source.startsWith("...");
+}
+
+function validateValueSelectors(
+	methodName: string,
+	tokens: PlaceholderToken[],
+	values?: Record<string, (...args: unknown[]) => unknown>
+): void {
+	for (const token of tokens) {
+		if (token.kind !== "value") {
+			continue;
+		}
+
+		const selector = values && Object.prototype.hasOwnProperty.call(values, token.key) ? values[token.key] : undefined;
+		if (typeof selector !== "function") {
+			throw new Error(
+				`Missing value selector for placeholder '__${token.key}__' in method '${methodName}'. ` +
+					`Add a '${token.key}' entry to the "values" option of the @step decorator.`
+			);
+		}
+	}
 }
 
 function parseFunctionParameters(target: Function): ParsedParameter[] | undefined {
@@ -493,7 +569,7 @@ function parseFunctionParameter(parameterSource: string, index: number): ParsedP
 		return { kind: "unsupported", index, source: summarizedSource };
 	}
 
-	if (/^[\p{ID_Start}_$][\p{ID_Continue}$‌‍]*$/u.test(candidate)) {
+	if (isIdentifier(candidate)) {
 		return {
 			kind: "named",
 			defaultValue: isRest ? undefined : parseDefaultValue(defaultValueSource),
@@ -504,6 +580,10 @@ function parseFunctionParameter(parameterSource: string, index: number): ParsedP
 	}
 
 	return { kind: "unsupported", index, source: summarizedSource };
+}
+
+function isIdentifier(source: string): boolean {
+	return /^[\p{ID_Start}_$][\p{ID_Continue}$\u200c\u200d]*$/u.test(source);
 }
 
 function normalizeParameterSource(source: string): string {
@@ -554,7 +634,91 @@ function parseLiteralDefaultValue(source: string): unknown {
 		return BigInt(source.slice(0, -1));
 	}
 
+	if (source.startsWith("{") && source.endsWith("}")) {
+		return parseObjectLiteral(source);
+	}
+
+	if (source.startsWith("[") && source.endsWith("]")) {
+		return parseArrayLiteral(source);
+	}
+
 	return parseQuotedStringLiteral(source);
+}
+
+/**
+ * Parses an object literal built only from literals. Returns `undefined` for anything that needs evaluating, such as
+ * a variable, spread, shorthand, method or computed key.
+ */
+function parseObjectLiteral(source: string): Record<string, unknown> | undefined {
+	const members = splitLiteralMembers(source);
+	if (!members) {
+		return undefined;
+	}
+
+	const result: Record<string, unknown> = {};
+	for (const member of members) {
+		const colonIndex = findTopLevelCharacters(member, ":")?.[0];
+		if (colonIndex === undefined) {
+			return undefined;
+		}
+
+		const key = parseObjectLiteralKey(member.slice(0, colonIndex).trim());
+		const valueSource = member.slice(colonIndex + 1).trim();
+		const value = parseLiteralDefaultValue(valueSource);
+		if (key === undefined || (value === undefined && valueSource !== "undefined")) {
+			return undefined;
+		}
+		result[key] = value;
+	}
+	return result;
+}
+
+function parseObjectLiteralKey(source: string): string | undefined {
+	const key = isIdentifier(source) ? source : parseQuotedStringLiteral(source);
+	if (key !== undefined) {
+		// In a literal, `__proto__` sets the prototype rather than a property.
+		return key === "__proto__" ? undefined : key;
+	}
+
+	const numericKey = parseLiteralDefaultValue(source);
+	return typeof numericKey === "number" ? String(numericKey) : undefined;
+}
+
+/**
+ * Parses an array literal built only from literals. Returns `undefined` for anything that needs evaluating, and for
+ * arrays with holes.
+ */
+function parseArrayLiteral(source: string): unknown[] | undefined {
+	const members = splitLiteralMembers(source);
+	if (!members) {
+		return undefined;
+	}
+
+	const result: unknown[] = [];
+	for (const member of members) {
+		const value = parseLiteralDefaultValue(member);
+		if (value === undefined && member !== "undefined") {
+			return undefined;
+		}
+		result.push(value);
+	}
+	return result;
+}
+
+/**
+ * Splits the contents of an object or array literal on its top-level commas, allowing a trailing comma.
+ * Returns `undefined` if the source isn't one balanced literal or has an empty member.
+ */
+function splitLiteralMembers(source: string): string[] | undefined {
+	const members = splitTopLevel(source.slice(1, -1), ",")?.map(member => member.trim());
+	if (!members) {
+		return undefined;
+	}
+
+	if (members[members.length - 1] === "") {
+		members.pop();
+	}
+	return members.includes("") ? undefined : members;
 }
 
 function parseQuotedStringLiteral(source: string): string | undefined {
@@ -818,7 +982,7 @@ function formatDescription(
 	tokens: PlaceholderToken[],
 	parameterLookup: NamedParameterLookup,
 	args: unknown[],
-	values?: Record<string, (...args: unknown[]) => unknown>
+	values: Record<string, (...args: unknown[]) => unknown> = {}
 ): string {
 	// Resolve named placeholders first, then index placeholders, then value placeholders, so error precedence
 	// stays the same as before. The description is then assembled in a single pass over the original string,
@@ -828,7 +992,9 @@ function formatDescription(
 	for (const token of [...tokens].sort((a, b) => kindOrder[a.kind] - kindOrder[b.kind])) {
 		resolved.set(
 			token,
-			formatPlaceholderValue(resolvePlaceholderToken(methodName, token, parameterLookup, args, values))
+			truncatePlaceholderValue(
+				formatPlaceholderValue(resolvePlaceholderToken(methodName, token, parameterLookup, args, values))
+			)
 		);
 	}
 
@@ -841,12 +1007,20 @@ function formatDescription(
 	return result + description.slice(cursor);
 }
 
+function truncatePlaceholderValue(value: string): string {
+	if (value.length <= MAX_PLACEHOLDER_LENGTH) {
+		return value;
+	}
+
+	return `${value.slice(0, MAX_PLACEHOLDER_LENGTH)}… (${value.length - MAX_PLACEHOLDER_LENGTH} more characters)`;
+}
+
 function resolvePlaceholderToken(
 	methodName: string,
 	token: PlaceholderToken,
 	parameterLookup: NamedParameterLookup,
 	args: unknown[],
-	values?: Record<string, (...args: unknown[]) => unknown>
+	values: Record<string, (...args: unknown[]) => unknown>
 ): unknown {
 	if (token.kind === "index") {
 		const index = token.index;
@@ -861,7 +1035,7 @@ function resolvePlaceholderToken(
 	}
 
 	if (token.kind === "value") {
-		return resolveValuePlaceholder(methodName, token.key, args, values);
+		return resolveValuePlaceholder(methodName, token.key, args, values[token.key]);
 	}
 
 	const placeholder = token.path;
@@ -873,14 +1047,24 @@ function resolvePlaceholderToken(
 		);
 	}
 	let value: unknown = resolveNamedParameterValue(methodName, parts[0], placeholder, parameter, args);
+	// An omitted `options = {}` is the usual way to make properties optional, so a missing one prints `undefined`.
+	const isOmittedObjectDefault =
+		!parameter.isRest &&
+		args[parameter.index] === undefined &&
+		parameter.defaultValue?.kind === "resolved" &&
+		typeof parameter.defaultValue.value === "object";
 
 	for (let i = 1; i < parts.length; i++) {
 		if (value === undefined || value === null) {
 			// Short-circuit like optional chaining and print the nullish value itself.
 			break;
 		}
-		if (typeof value === "object" && parts[i] in value) {
-			value = (value as Record<string, unknown>)[parts[i]];
+		// `Object()` boxes primitives, so properties such as a string's `length` can be read.
+		const holder = Object(value) as Record<string, unknown>;
+		if (parts[i] in holder) {
+			value = holder[parts[i]];
+		} else if (isOmittedObjectDefault) {
+			value = undefined;
 		} else {
 			throw new Error(
 				`Invalid @step placeholder '{{${placeholder}}}' in method '${methodName}': ` +
@@ -897,18 +1081,11 @@ function resolveValuePlaceholder(
 	methodName: string,
 	key: string,
 	args: unknown[],
-	values?: Record<string, (...args: unknown[]) => unknown>
+	selector: (...args: unknown[]) => unknown
 ): unknown {
-	const selector = values && Object.prototype.hasOwnProperty.call(values, key) ? values[key] : undefined;
-	if (typeof selector !== "function") {
-		throw new Error(
-			`Missing value selector for placeholder '__${key}__' in method '${methodName}'. ` +
-				`Add a '${key}' entry to the "values" option of the @step decorator.`
-		);
-	}
-
+	let value: unknown;
 	try {
-		return selector(...args);
+		value = selector(...args);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
 		const wrapped = new Error(
@@ -918,6 +1095,25 @@ function resolveValuePlaceholder(
 		Object.defineProperty(wrapped, "cause", { configurable: true, enumerable: false, value: error, writable: true });
 		throw wrapped;
 	}
+
+	if (isThenable(value)) {
+		// Nothing else will ever await this promise, so a later failure must not become an unhandled rejection.
+		Promise.resolve(value).catch(() => {});
+		throw new Error(
+			`Value selector for placeholder '__${key}__' in method '${methodName}' returned a promise. ` +
+				`Selectors run before the step starts and must be synchronous.`
+		);
+	}
+
+	return value;
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return (
+		(typeof value === "object" || typeof value === "function") &&
+		value !== null &&
+		typeof (value as { then?: unknown }).then === "function"
+	);
 }
 
 function resolveNamedParameterValue(

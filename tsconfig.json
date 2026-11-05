@@ -13,5 +13,6 @@
 		"skipLibCheck": true,
 		"outDir": "dist",
 		"types": ["node"]
-	}
+	},
+	"include": ["src", "tests", "tests-dist", "playwright.config.ts", "playwright.dist.config.ts"]
 }

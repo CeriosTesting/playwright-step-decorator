@@ -47,6 +47,9 @@
 		"lint": "oxlint --type-aware --type-check",
 		"release": "changeset publish",
 		"test": "playwright test",
+		"test:dist": "npm run build && playwright test --config playwright.dist.config.ts",
+		"typecheck": "tsc --noEmit",
+		"typecheck:consumer": "tsc -p tests-types",
 		"update-all-packages": "npm-check-updates -u && npm i",
 		"version-packages": "changeset version",
 		"version-packages:prepare-release": "npm run version-packages && npm run format"
@@ -54,14 +57,14 @@
 	"devDependencies": {
 		"@arethetypeswrong/cli": "^0.18.5",
 		"@changesets/cli": "^3.0.3",
-		"@playwright/test": "^1.63.0",
-		"@types/node": "^26.6.3",
-		"npm-check-updates": "^23.1.0",
-		"oxfmt": "^0.70.0",
-		"oxlint": "^1.85.0",
-		"oxlint-tsgolint": "^7.0.2003",
-		"ts-node": "^10.9.2",
-		"tsdown": "^0.23.0"
+		"@playwright/test": "^1.64.1",
+		"@types/node": "^26.6.6",
+		"npm-check-updates": "^23.1.1",
+		"oxfmt": "^0.76.0",
+		"oxlint": "^1.91.0",
+		"oxlint-tsgolint": "^7.0.2005",
+		"tsdown": "^0.23.5",
+		"typescript": "^7.0.2"
 	},
 	"peerDependencies": {
 		"@playwright/test": "^1.51.0",
@@ -71,5 +74,8 @@
 		"typescript": {
 			"optional": true
 		}
+	},
+	"engines": {
+		"node": ">=18"
 	}
 }

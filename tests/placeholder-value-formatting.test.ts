@@ -226,6 +226,62 @@ test.describe("step decorator - placeholder value formatting", () => {
 		expect(collectedSteps[0].length).toBeLessThan(1_000);
 	});
 
+	test("should read properties of primitive values and functions", async () => {
+		class MyTestClass {
+			@step("{{text.length}} {{list.length}} {{fn.name}} {{user.name.length}}")
+			async myMethod(text: string, list: string[], fn: () => void, user: { name: string }): Promise<void> {
+				void text;
+				void list;
+				void fn;
+				void user;
+			}
+		}
+
+		function myNamedFn() {}
+		await new MyTestClass().myMethod("abc", ["a", "b"], myNamedFn, { name: "Alice" });
+		expect(collectedSteps[0]).toBe("3 2 myNamedFn 5");
+	});
+
+	test("should reject when a property does not exist on a primitive value", async () => {
+		class MyTestClass {
+			@step("{{text.nope}}")
+			async myMethod(text: string): Promise<void> {
+				void text;
+			}
+		}
+
+		await expect(new MyTestClass().myMethod("abc")).rejects.toThrow(
+			"Property 'nope' does not exist on parameter 'text'"
+		);
+	});
+
+	test("should cut off long values and say how much was removed", async () => {
+		class MyTestClass {
+			@step("{{text}} | {{list}} | {{short}}")
+			async myMethod(text: string, list: number[], short: string): Promise<void> {
+				void text;
+				void list;
+				void short;
+			}
+		}
+
+		await new MyTestClass().myMethod("x".repeat(1_500), Array(600).fill(1) as number[], "y".repeat(1_000));
+		const [text, list, short] = collectedSteps[0].split(" | ");
+		expect(text).toBe(`${"x".repeat(1_000)}… (500 more characters)`);
+		expect(list).toBe(`${JSON.stringify(Array(600).fill(1)).slice(0, 1_000)}… (201 more characters)`);
+		expect(short).toBe("y".repeat(1_000));
+	});
+
+	test("should apply the length cap to selector results", async () => {
+		class MyTestClass {
+			@step("Value __long__", { values: { long: () => "z".repeat(1_001) } })
+			async myMethod(): Promise<void> {}
+		}
+
+		await new MyTestClass().myMethod();
+		expect(collectedSteps[0]).toBe(`Value ${"z".repeat(1_000)}… (1 more characters)`);
+	});
+
 	test("should format Map, Set and RegExp values at the top level", async () => {
 		class MyTestClass {
 			@step("[[0]] | [[1]] | [[2]]")

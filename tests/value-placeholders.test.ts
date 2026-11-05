@@ -236,28 +236,70 @@ test.describe("step decorator - __key__ value placeholders", () => {
 		expect(collectedSteps[0]).toBe("Read __NEXT_DATA__ as Alice");
 	});
 
-	test("should reject when a placeholder has no selector at runtime", async () => {
+	test("should throw when the class is defined if a placeholder has no selector", () => {
 		const description: string = "Hello __name__";
-		class MyTestClass {
-			@step(description, { values: { other: () => "x" } })
-			async myMethod(): Promise<void> {}
-		}
-
-		await expect(new MyTestClass().myMethod()).rejects.toThrow(
-			"Missing value selector for placeholder '__name__' in method 'MyTestClass.myMethod'"
-		);
+		expect(() => {
+			class MyTestClass {
+				@step(description, { values: { other: () => "x" } })
+				async myMethod(): Promise<void> {}
+			}
+			void MyTestClass;
+		}).toThrow("Missing value selector for placeholder '__name__' in method 'myMethod'");
 	});
 
 	test("should return a rejected promise instead of throwing synchronously", async () => {
 		class MyTestClass {
-			@step("Hello {{missing}}")
+			@step("Hello {{user.missing}}")
+			async myMethod(user: object): Promise<void> {
+				void user;
+			}
+		}
+
+		const result = new MyTestClass().myMethod({});
+		expect(result).toBeInstanceOf(Promise);
+		await expect(result).rejects.toThrow("Property 'missing' does not exist on parameter 'user'");
+		expect(collectedSteps).toEqual([]);
+	});
+
+	test("should reject when a selector returns a promise or thenable", async () => {
+		class MyTestClass {
+			@step("Hello __name__", { values: { name: async () => "Alice" } })
+			async withPromise(): Promise<void> {}
+
+			@step("Hello __name__", {
+				values: {
+					// oxlint-disable-next-line unicorn/no-thenable
+					name: () => ({ then: (resolve: (value: string) => void) => resolve("Alice") }),
+				},
+			})
+			async withThenable(): Promise<void> {}
+		}
+
+		const instance = new MyTestClass();
+		const message = "Value selector for placeholder '__name__' in method 'MyTestClass.withPromise' returned a promise.";
+		await expect(instance.withPromise()).rejects.toThrow(message);
+		await expect(instance.withThenable()).rejects.toThrow("returned a promise");
+		expect(collectedSteps).toEqual([]);
+	});
+
+	test("should not cause an unhandled rejection when a selector's promise rejects", async () => {
+		const unhandled: unknown[] = [];
+		const onUnhandled = (reason: unknown) => unhandled.push(reason);
+		process.on("unhandledRejection", onUnhandled);
+
+		class MyTestClass {
+			@step("Hello __name__", { values: { name: () => Promise.reject(new Error("late failure")) } })
 			async myMethod(): Promise<void> {}
 		}
 
-		const result = new MyTestClass().myMethod();
-		expect(result).toBeInstanceOf(Promise);
-		await expect(result).rejects.toThrow("Missing function parameters (missing)");
-		expect(collectedSteps).toEqual([]);
+		try {
+			await expect(new MyTestClass().myMethod()).rejects.toThrow("returned a promise");
+			// Unhandled rejections are reported after the microtask queue drains.
+			await new Promise(resolve => setImmediate(resolve));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", onUnhandled);
+		}
 	});
 
 	test("should wrap errors thrown by a selector and keep the cause", async () => {

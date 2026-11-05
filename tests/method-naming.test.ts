@@ -31,8 +31,8 @@ test.describe("step decorator - method naming and this", () => {
 	});
 
 	test("should support symbol-named methods with and without a description", async () => {
-		// Playwright's transpiler rejects any decorator on a symbol-named method, so apply this one by hand. This
-		// covers code compiled by `tsc`, which passes the symbol through in `context.name`.
+		// The Babel helper bundled with Playwright throws on any decorated symbol-named method, before the decorator
+		// runs, so apply this one by hand. This covers code compiled by `tsc`, which passes the symbol through.
 		class MyTestClass {}
 		const method = async function (this: MyTestClass): Promise<void> {};
 		const context = {
@@ -49,6 +49,23 @@ test.describe("step decorator - method naming and this", () => {
 		await step()(method, context).call(new MyTestClass());
 		await step("Described step")(method, context).call(new MyTestClass());
 		expect(collectedSteps).toEqual(["MyTestClass.Symbol(unnamed)", "Described step"]);
+	});
+
+	test("should support the documented pattern for symbol-named methods under Playwright's transpiler", async () => {
+		const run = Symbol("run");
+		class MyTestClass {
+			@step("Run with {{value}}")
+			async runStep(value: string): Promise<string> {
+				return value;
+			}
+
+			[run](value: string): Promise<string> {
+				return this.runStep(value);
+			}
+		}
+
+		await expect(new MyTestClass()[run]("x")).resolves.toBe("x");
+		expect(collectedSteps).toEqual(["Run with x"]);
 	});
 
 	test("should run a detached method that does not use this", async () => {
