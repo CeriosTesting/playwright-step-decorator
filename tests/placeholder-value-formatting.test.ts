@@ -176,7 +176,146 @@ test.describe("step decorator - placeholder value formatting", () => {
 		obj["self"] = obj;
 		// oxlint-disable-next-line typescript-eslint/no-unsafe-argument
 		await new MyTestClass().myMethod(obj);
-		expect(collectedSteps[0]).toContain("[Circular]");
+		expect(collectedSteps[0]).toBe('Value: {"a":1,"self":"[Circular]"}');
+	});
+
+	test("should print an object that is used twice instead of marking it circular", async () => {
+		class MyTestClass {
+			@step("{{inObject}} {{inArray}}")
+			async myMethod(inObject: unknown, inArray: unknown): Promise<void> {
+				void inObject;
+				void inArray;
+			}
+		}
+
+		const shared = { n: 1 };
+		await new MyTestClass().myMethod({ a: shared, b: shared }, [shared, shared]);
+		expect(collectedSteps[0]).toBe('{"a":{"n":1},"b":{"n":1}} [{"n":1},{"n":1}]');
+	});
+
+	test("should mark a cycle that passes through a shared object", async () => {
+		class MyTestClass {
+			@step("[[0]]")
+			async myMethod(value: unknown): Promise<void> {
+				void value;
+			}
+		}
+
+		const shared: Record<string, unknown> = { n: 1 };
+		shared["parent"] = { shared };
+		await new MyTestClass().myMethod({ a: { n: 2 }, b: shared });
+		expect(collectedSteps[0]).toBe('{"a":{"n":2},"b":{"n":1,"parent":{"shared":"[Circular]"}}}');
+	});
+
+	test("should not hang on a heavily shared object graph", async () => {
+		class MyTestClass {
+			@step("[[0]]")
+			async myMethod(value: unknown): Promise<void> {
+				void value;
+			}
+		}
+
+		// Expanding every shared reference would produce 2^60 values, so this falls back to depth-limited output.
+		let graph: Record<string, unknown> = { leaf: true };
+		for (let i = 0; i < 60; i++) {
+			graph = { left: graph, right: graph };
+		}
+
+		await new MyTestClass().myMethod(graph);
+		expect(collectedSteps[0]).toContain("[Object]");
+		expect(collectedSteps[0].length).toBeLessThan(1_000);
+	});
+
+	test("should read properties of primitive values and functions", async () => {
+		class MyTestClass {
+			@step("{{text.length}} {{list.length}} {{fn.name}} {{user.name.length}}")
+			async myMethod(text: string, list: string[], fn: () => void, user: { name: string }): Promise<void> {
+				void text;
+				void list;
+				void fn;
+				void user;
+			}
+		}
+
+		function myNamedFn() {}
+		await new MyTestClass().myMethod("abc", ["a", "b"], myNamedFn, { name: "Alice" });
+		expect(collectedSteps[0]).toBe("3 2 myNamedFn 5");
+	});
+
+	test("should reject when a property does not exist on a primitive value", async () => {
+		class MyTestClass {
+			@step("{{text.nope}}")
+			async myMethod(text: string): Promise<void> {
+				void text;
+			}
+		}
+
+		await expect(new MyTestClass().myMethod("abc")).rejects.toThrow(
+			"Property 'nope' does not exist on parameter 'text'"
+		);
+	});
+
+	test("should cut off long values and say how much was removed", async () => {
+		class MyTestClass {
+			@step("{{text}} | {{list}} | {{short}}")
+			async myMethod(text: string, list: number[], short: string): Promise<void> {
+				void text;
+				void list;
+				void short;
+			}
+		}
+
+		await new MyTestClass().myMethod("x".repeat(1_500), Array(600).fill(1) as number[], "y".repeat(1_000));
+		const [text, list, short] = collectedSteps[0].split(" | ");
+		expect(text).toBe(`${"x".repeat(1_000)}… (500 more characters)`);
+		expect(list).toBe(`${JSON.stringify(Array(600).fill(1)).slice(0, 1_000)}… (201 more characters)`);
+		expect(short).toBe("y".repeat(1_000));
+	});
+
+	test("should apply the length cap to selector results", async () => {
+		class MyTestClass {
+			@step("Value __long__", { values: { long: () => "z".repeat(1_001) } })
+			async myMethod(): Promise<void> {}
+		}
+
+		await new MyTestClass().myMethod();
+		expect(collectedSteps[0]).toBe(`Value ${"z".repeat(1_000)}… (1 more characters)`);
+	});
+
+	test("should format Map, Set and RegExp values at the top level", async () => {
+		class MyTestClass {
+			@step("[[0]] | [[1]] | [[2]]")
+			async myMethod(map: unknown, set: unknown, pattern: unknown): Promise<void> {
+				void map;
+				void set;
+				void pattern;
+			}
+		}
+
+		await new MyTestClass().myMethod(new Map([["a", 1]]), new Set([1, 2]), /foo/i);
+		expect(collectedSteps[0]).toBe("Map(1) { 'a' => 1 } | Set(2) { 1, 2 } | /foo/i");
+	});
+
+	test("should format nested Map, Set, RegExp and Error values", async () => {
+		class MyTestClass {
+			@step("[[0]]")
+			async myMethod(value: unknown): Promise<void> {
+				void value;
+			}
+		}
+
+		await new MyTestClass().myMethod({
+			error: new TypeError("bad"),
+			map: new Map([["a", 1]]),
+			pattern: /foo/i,
+			set: new Set([1]),
+		});
+		expect(JSON.parse(collectedSteps[0])).toEqual({
+			error: "TypeError: bad",
+			map: "Map(1) { 'a' => 1 }",
+			pattern: "/foo/i",
+			set: "Set(1) { 1 }",
+		});
 	});
 
 	test("should format an object containing a Symbol value via JSON replacer", async () => {

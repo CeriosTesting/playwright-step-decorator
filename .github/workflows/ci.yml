@@ -30,14 +30,76 @@ jobs:
       - name: Linting & Type check
         run: npm run lint
 
+      - name: Type check with tsc
+        run: npm run typecheck
+
       - name: Check formatting
         run: npm run format:check
 
       - name: Run tests
         run: npm run test
 
-      - name: Build packages
-        run: npm run build
+      - name: Build and test the built package
+        run: npm run test:dist
 
       - name: Validate
         run: npx @arethetypeswrong/cli --pack . --ignore-rules=no-resolution
+
+  # Type-checks the published types on the versions the peer dependency ranges promise to support.
+  consumer-types:
+    name: Consumer types (TS ${{ matrix.typescript }}, Playwright ${{ matrix.playwright }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - typescript: 5.0.2
+            playwright: 1.51.0
+          - typescript: 5.9.3
+            playwright: latest
+          - typescript: 6.0.3
+            playwright: latest
+          - typescript: 7.0.2
+            playwright: latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Install the versions under test
+        run: npm install --no-save typescript@${{ matrix.typescript }} @playwright/test@${{ matrix.playwright }}
+
+      - name: Type check the consumer
+        run: npm run typecheck:consumer
+
+  # Runs the test suite on the lowest Playwright version the peer dependency range allows.
+  minimum-playwright:
+    name: Tests on Playwright 1.51.0
+    # Pinned: this Playwright version has no browser builds for newer Ubuntu releases, so ubuntu-latest can't install Chromium.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: "npm"
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save @playwright/test@1.51.0
+          npx playwright install chromium
+
+      # "Happy flow" asserts the navbar text of the live playwright.dev site, which differs for this older browser.
+      - name: Run tests
+        run: npx playwright test --grep-invert "Happy flow"

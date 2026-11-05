@@ -1,4 +1,5 @@
 {
+	"ignorePatterns": ["tests-types"],
 	"rules": {
 		"typescript/no-unused-vars": "warn",
 		"typescript/no-explicit-any": "warn"

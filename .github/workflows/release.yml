@@ -36,11 +36,11 @@ jobs:
           npm ci
           npx playwright install
 
-      - name: Build packages
-        run: npm run build
-
       - name: Test
         run: npm run test
+
+      - name: Build and test the built package
+        run: npm run test:dist
 
       - name: Create Release Pull Request or Publish
         id: changesets

@@ -205,7 +205,7 @@ test.describe("step decorator", () => {
 		}
 
 		const instance = new MyTestClass();
-		expect(() => instance.myMethod()).toThrow(
+		await expect(instance.myMethod()).rejects.toThrow(
 			"Unable to resolve the default value for parameter 'mode' in method 'MyTestClass.myMethod' while formatting @step placeholder '{{mode}}'. Only literal default values can be printed when the argument is omitted. Pass the argument explicitly or use an index placeholder instead."
 		);
 		expect(collectedSteps).toEqual([]);
@@ -308,33 +308,72 @@ test.describe("step decorator", () => {
 		expect(collectedLocations[0]).toBeDefined();
 	});
 
-	test("should throw error if description references missing param", async () => {
-		class MyTestClass {
-			@step("Test with {{param2}}")
-			async foo(param1: string) {
-				return param1;
+	test("should throw when the class is defined if description references missing param", () => {
+		expect(() => {
+			class MyTestClass {
+				@step("Test with {{param2}}")
+				async foo(param1: string) {
+					return param1;
+				}
 			}
-		}
-		const instance = new MyTestClass();
-		expect(() => instance.foo("value")).toThrow(
-			"Missing function parameters (param2) in method 'MyTestClass.foo'. Please check your @step decorator placeholders."
-		);
-		expect(collectedSteps).toEqual([]);
+			void MyTestClass;
+		}).toThrow("Missing function parameters (param2) in method 'foo'. Please check your @step decorator placeholders.");
 	});
 
-	test("should provide a targeted error for destructured parameters in named placeholders", async () => {
+	test("should provide a targeted error for destructured parameters in named placeholders", () => {
+		expect(() => {
+			class MyTestClass {
+				@step("User {{name}}")
+				async foo({ name }: { name: string }) {
+					return name;
+				}
+			}
+			void MyTestClass;
+		}).toThrow(
+			"Unable to resolve named @step placeholders (name) in method 'foo' because this signature contains parameters that cannot be matched by name ({ name }). Named placeholders support identifier parameters, default values, and rest parameters. Use index placeholders like [[0]] for destructured or unsupported parameters."
+		);
+	});
+
+	test("should suggest moving @step when another decorator hides the parameters", () => {
+		const wrap = <This, Args extends unknown[], Return>(
+			target: (this: This, ...args: Args) => Return,
+			_context: ClassMethodDecoratorContext
+		) =>
+			function (this: This, ...args: Args): Return {
+				return target.apply(this, args);
+			};
+
+		expect(() => {
+			class MyTestClass {
+				@step("Value {{value}}")
+				@wrap
+				async foo(value: string) {
+					return value;
+				}
+			}
+			void MyTestClass;
+		}).toThrow("move @step directly above the method");
+	});
+
+	test("should read the real parameters when @step sits directly above the method", async () => {
+		const wrap = <This, Args extends unknown[], Return>(
+			target: (this: This, ...args: Args) => Return,
+			_context: ClassMethodDecoratorContext
+		) =>
+			function (this: This, ...args: Args): Return {
+				return target.apply(this, args);
+			};
+
 		class MyTestClass {
-			@step("User {{name}}")
-			async foo({ name }: { name: string }) {
-				return name;
+			@wrap
+			@step("Value {{value}}")
+			async foo(value: string) {
+				return value;
 			}
 		}
 
-		const instance = new MyTestClass();
-		expect(() => instance.foo({ name: "Alice" })).toThrow(
-			"Unable to resolve named @step placeholders (name) in method 'MyTestClass.foo' because this signature contains parameters that cannot be matched by name ({ name }). Named placeholders support identifier parameters, default values, and rest parameters. Use index placeholders like [[0]] for destructured or unsupported parameters."
-		);
-		expect(collectedSteps).toEqual([]);
+		await new MyTestClass().foo("x");
+		expect(collectedSteps[0]).toBe("Value x");
 	});
 
 	test("should replace multiple placeholders in description", async () => {
@@ -399,16 +438,91 @@ test.describe("step decorator", () => {
 		expect(collectedSteps[0]).toBe("Values: test, 42");
 	});
 
-	test("should throw error if [[2]] index is out of bounds", async () => {
+	test("should throw when the class is defined if an index is beyond the declared parameters", () => {
+		expect(() => {
+			class MyTestClass {
+				@step("Value at [[2]] is {{value}}")
+				async foo(value: string) {
+					return `Value is ${value}`;
+				}
+			}
+			void MyTestClass;
+		}).toThrow(
+			"Parameter index '2' is out of bounds in method 'foo'. This method declares 1 parameter(s), but the @step decorator references index 2."
+		);
+	});
+
+	test("should reject when an index is declared but the argument was not passed", async () => {
 		class MyTestClass {
-			@step("Value at [[2]] is {{value}}")
-			async foo(value: string) {
-				return `Value is ${value}`;
+			@step("Value at [[1]]")
+			async foo(first: string, second?: string) {
+				return `${first}${second}`;
 			}
 		}
+
+		await expect(new MyTestClass().foo("a")).rejects.toThrow(
+			"Parameter index '1' is out of bounds in method 'MyTestClass.foo'. This method received 1 argument(s)"
+		);
+		await new MyTestClass().foo("a", "b");
+		expect(collectedSteps).toEqual(["Value at b"]);
+	});
+
+	test("should allow any index on methods that can receive extra arguments", async () => {
+		class MyTestClass {
+			@step("Rest [[2]]")
+			async withRest(...values: string[]) {
+				return values;
+			}
+
+			@step("Destructured rest [[2]]")
+			async withDestructuredRest(...[first]: string[]) {
+				return first;
+			}
+
+			@step("Arguments [[1]]")
+			async withArguments(_first: string) {
+				return arguments.length;
+			}
+		}
+
 		const instance = new MyTestClass();
-		expect(() => instance.foo("test")).toThrow("Parameter index '2' is out of bounds");
-		expect(collectedSteps).toEqual([]);
+		await instance.withRest("a", "b", "c");
+		await instance.withDestructuredRest("a", "b", "c");
+		await (instance.withArguments as (...args: string[]) => Promise<number>).call(instance, "a", "b");
+		expect(collectedSteps).toEqual(["Rest c", "Destructured rest c", "Arguments b"]);
+	});
+
+	test("should parse each description once instead of on every call", async () => {
+		let sourceReads = 0;
+		const rawFn = async function myMethod(value: string): Promise<void> {
+			void value;
+		};
+		const source = Function.prototype.toString.call(rawFn);
+		Object.defineProperty(rawFn, "toString", {
+			value: () => {
+				sourceReads += 1;
+				return source;
+			},
+		});
+		class MyTestClass {}
+
+		const decorated = step("Value {{value}}")(rawFn, {
+			kind: "method",
+			name: "myMethod",
+			addInitializer: () => {},
+			// oxlint-disable-next-line typescript-eslint/no-explicit-any
+			access: {} as any,
+			metadata: {},
+			static: false,
+			private: false,
+		} as ClassMethodDecoratorContext<MyTestClass, typeof rawFn>);
+		const readsAtDefinition = sourceReads;
+
+		await decorated.call(new MyTestClass(), "a");
+		await decorated.call(new MyTestClass(), "b");
+		expect(readsAtDefinition).toBeGreaterThan(0);
+		expect(sourceReads).toBe(readsAtDefinition);
+		expect(collectedSteps).toEqual(["Value a", "Value b"]);
 	});
 
 	test("should throw error if nested property does not exist", async () => {
@@ -419,7 +533,9 @@ test.describe("step decorator", () => {
 			}
 		}
 		const instance = new MyTestClass();
-		expect(() => instance.foo({ prop: "test" })).toThrow("Property 'nonExistent' does not exist on parameter 'obj'");
+		await expect(instance.foo({ prop: "test" })).rejects.toThrow(
+			"Property 'nonExistent' does not exist on parameter 'obj'"
+		);
 		expect(collectedSteps).toEqual([]);
 	});
 
