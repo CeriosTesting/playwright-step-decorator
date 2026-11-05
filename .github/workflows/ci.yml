@@ -84,7 +84,8 @@ jobs:
   # Runs the test suite on the lowest Playwright version the peer dependency range allows.
   minimum-playwright:
     name: Tests on Playwright 1.51.0
-    runs-on: ubuntu-latest
+    # Pinned: this Playwright version has no browser builds for newer Ubuntu releases, so ubuntu-latest can't install Chromium.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
