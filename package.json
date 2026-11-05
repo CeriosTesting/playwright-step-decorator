@@ -51,7 +51,7 @@
 		"typecheck": "tsc --noEmit",
 		"typecheck:consumer": "tsc -p tests-types",
 		"update-all-packages": "npm-check-updates -u && npm i",
-		"version-packages": "changeset version",
+		"version-packages": "changeset version && npm install --package-lock-only --ignore-scripts",
 		"version-packages:prepare-release": "npm run version-packages && npm run format"
 	},
 	"devDependencies": {
