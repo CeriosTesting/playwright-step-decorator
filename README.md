@@ -32,6 +32,8 @@ npm install --save-dev @cerios/playwright-step-decorator
 
 ## Usage
 
+`@step` is a standard ECMAScript decorator for class methods. Playwright's transpiler supports this out of the box. If you compile your tests with `tsc`, make sure `experimentalDecorators` is not enabled: `@step` then has no effect, and no step is reported.
+
 ### Import the Decorator
 
 ```typescript
@@ -144,9 +146,11 @@ The `@step` decorator wraps your promise-returning method in a Playwright `test.
 - **Index-based**: `[[0]]`, `[[1]]`, ...
   Replaced with the argument at the given index.
 - **Value selector**: `__key__` (for example `__0__` or `__role__`)
-  Replaced with the result of the matching lambda in the `values` option. See [Value Selector Placeholders](#4-value-selector-placeholders).
+  Replaced with the result of the matching lambda in the `values` option. Without `values`, `__key__` is literal text. See [Value Selector Placeholders](#4-value-selector-placeholders).
 
-When a placeholder resolves to an object or array, the decorator renders it as JSON when possible so reports stay readable.
+When a placeholder resolves to an object or array, the decorator renders it as JSON when possible so reports stay readable. Regular expressions, errors, `Map`s and `Set`s are printed in a readable form, and very large values use a shorter, depth-limited form.
+
+Named placeholders read the parameter names from the method's source. If another decorator sits below `@step`, `@step` sees that decorator's wrapper function rather than your parameters, so use index placeholders such as `[[0]]` instead.
 
 ---
 
@@ -155,33 +159,39 @@ When a placeholder resolves to an object or array, the decorator renders it as J
 ### 1. Named and Nested Placeholders
 
 ```typescript
-@step("User: {{user.name}}, Age: {{user.age}}")
-async function greet(user: { name: string, age: number }) {
-  // ...
+class Greeter {
+	@step("User: {{user.name}}, Age: {{user.age}}")
+	async greet(user: { name: string; age: number }) {
+		// ...
+	}
 }
-await greet({ name: 'Alice', age: 30 });
+await new Greeter().greet({ name: "Alice", age: 30 });
 // Step description: "User: Alice, Age: 30"
 ```
 
 ### 2. Index Placeholders
 
 ```typescript
-@step("First arg is [[0]], second is [[1]]")
-async function doSomething(a: string, b: number) {
-  // ...
+class Worker {
+	@step("First arg is [[0]], second is [[1]]")
+	async doSomething(a: string, b: number) {
+		// ...
+	}
 }
-await doSomething('foo', 42);
+await new Worker().doSomething("foo", 42);
 // Step description: "First arg is foo, second is 42"
 ```
 
 ### 3. Mixing Named and Index Placeholders
 
 ```typescript
-@step("Named: {{name}}, Index: [[1]]")
-async function example(name: string, value: number) {
-  // ...
+class Example {
+	@step("Named: {{name}}, Index: [[1]]")
+	async run(name: string, value: number) {
+		// ...
+	}
 }
-await example('Bob', 77);
+await new Example().run("Bob", 77);
 // Step description: "Named: Bob, Index: 77"
 ```
 
@@ -212,15 +222,18 @@ class ContactsPage {
 // Step description: "Add contacts for Alice (second: carol@example.com, primary: Bob, Dave)"
 ```
 
-For a literal description, the compiler enforces:
+`__key__` placeholders are only active when you pass the `values` option. Without it, text such as `__NEXT_DATA__` prints as is.
 
-- every `__key__` in the description has a selector in `values` (leaving out `values` is an error too),
+When you pass `values` with a literal description, the compiler enforces:
+
+- every `__key__` in the description has a selector in `values`,
 - `values` contains no keys that aren't in the description,
 - each lambda's parameters match the decorated method's parameters. Explicit annotations such as `(user: User) => ...` are allowed, but they must match.
 
 Notes:
 
-- Keys can be numeric (`__0__` → `{ 0: ... }`) or names (`__role__` → `{ role: ... }`). Keys are any text between `__` and `__` without whitespace. Empty or whitespace spans such as `a __ b __ c` stay as literal text.
+- Keys can be numeric (`__0__` → `{ 0: ... }`) or names (`__role__` → `{ role: ... }`). Keys are any text between `__` and `__` without whitespace, braces or square brackets. Other spans, such as `a __ b __ c` or `report__{{date}}__final`, stay as literal text.
+- To print literal `__text__` in a description that also uses `values`, return it from a selector: `{ literal: () => "__text__" }`. A parameter name that contains a complete `__key__`, such as `{{a__b__c}}`, can't be used alongside `values`, so use an index placeholder for it.
 - Lambdas receive the arguments exactly as passed; omitted optional arguments are `undefined`.
 - A lambda that returns `null` or `undefined` prints `null` or `undefined`. For nullable parameters, use optional chaining (`user => user?.name`), which the compiler requires when the parameter's type allows `null` or `undefined`.
 - The returned value is formatted like any other placeholder (strings as-is, objects as JSON).
@@ -256,12 +269,14 @@ The Playwright report will show the step location as `my-test.spec.ts:10`, not t
 
 ## Error Handling
 
-- Throws if a named parameter in the description does not exist in the function signature.
-- Throws a targeted error when named placeholders are used with destructured or otherwise unsupported parameter syntax, and suggests using index placeholders instead.
-- Throws if a nested property does not exist on the parameter. If the parameter (or an intermediate property) is `null` or `undefined`, the placeholder prints `null` or `undefined` instead of throwing.
-- Throws if an index placeholder is out of bounds.
-- Throws if a `__key__` placeholder has no selector in `values`. This is a compile-time error for literal descriptions.
-- If a `values` selector throws, the decorator rethrows a descriptive error with the original error as `cause`.
+If a description can't be resolved, the promise returned by the decorated method rejects and the step doesn't start. This happens when:
+
+- A named parameter in the description does not exist in the function signature.
+- Named placeholders are used with destructured or otherwise unsupported parameter syntax. The error suggests using index placeholders instead.
+- A nested property does not exist on the parameter. If the parameter (or an intermediate property) is `null` or `undefined`, the placeholder prints `null` or `undefined` instead.
+- An index placeholder is out of bounds.
+- A `__key__` placeholder has no selector in `values`. This is a compile-time error for literal descriptions.
+- A `values` selector throws. The rejection is a descriptive error with the original error as `cause`.
 
 ---
 
@@ -310,7 +325,7 @@ class NavbarTest {
 ### `step(description: string, options)`
 
 - **options.box / options.timeout / options.location**: Forwarded to Playwright's `test.step()`.
-- **options.values**: An object mapping each `__key__` placeholder in the description to a lambda `(...methodArgs) => unknown`. It's required when a literal description contains `__key__` placeholders.
+- **options.values**: An object mapping each `__key__` placeholder in the description to a lambda `(...methodArgs) => unknown`. Passing it turns on `__key__` placeholders for that description.
 
 ### `step(options)`
 

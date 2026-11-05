@@ -81,4 +81,56 @@ test.describe("step decorator - bundler URL normalisation", () => {
 			column: 7,
 		});
 	});
+
+	test("should strip the async prefix from anonymous async frames", async () => {
+		class MyTestClass {
+			@step("Async frame step")
+			async myMethod(): Promise<void> {}
+		}
+
+		await withMockedErrorStack(
+			[
+				"Error",
+				"    at captureCallSiteLocation (/repo/src/playwright-step-decorator.ts:10:5)",
+				"    at replacementMethod (/repo/src/playwright-step-decorator.ts:20:5)",
+				"    at async /repo/tests/example.spec.ts:30:7",
+			].join("\n"),
+			async () => {
+				await new MyTestClass().myMethod();
+			}
+		);
+
+		expect(collectedLocations[0]).toEqual({
+			file: "/repo/tests/example.spec.ts",
+			line: 30,
+			column: 7,
+		});
+	});
+
+	test("should skip all node: frames when looking for the call site", async () => {
+		class MyTestClass {
+			@step("Node frame step")
+			async myMethod(): Promise<void> {}
+		}
+
+		await withMockedErrorStack(
+			[
+				"Error",
+				"    at captureCallSiteLocation (/repo/src/playwright-step-decorator.ts:10:5)",
+				"    at replacementMethod (/repo/src/playwright-step-decorator.ts:20:5)",
+				"    at EventEmitter.emit (node:events:524:28)",
+				"    at AsyncLocalStorage.run (node:async_hooks:346:14)",
+				"    at Object.handler (/repo/tests/example.spec.ts:30:7)",
+			].join("\n"),
+			async () => {
+				await new MyTestClass().myMethod();
+			}
+		);
+
+		expect(collectedLocations[0]).toEqual({
+			file: "/repo/tests/example.spec.ts",
+			line: 30,
+			column: 7,
+		});
+	});
 });

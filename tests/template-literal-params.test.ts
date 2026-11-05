@@ -2,38 +2,48 @@ import { test, expect } from "@playwright/test";
 
 import { step } from "../src/playwright-step-decorator";
 
-import { setupMockStep } from "./helpers";
+import { collectedSteps, setupMockStep } from "./helpers";
 
 test.describe("step decorator - template literal in parameter list", () => {
 	setupMockStep();
 
-	test("should throw 'Unable to parse the parameter list' when a parameter default uses a template literal", () => {
-		// TypeScript does not allow template literal defaults in parameter lists, so we construct
-		// a function via new Function() whose toString() contains a template literal default.
-		// The decorator reads the function source via toString() to resolve named placeholders,
-		// and must throw when it encounters the unparseable template literal.
-		// oxlint-disable-next-line no-implied-eval
-		const rawFn = new Function("return async function myMethod(val = `hello`) { return val; }")() as (
-			val?: string
-		) => Promise<string>;
+	test("should resolve other parameters when a parameter default is a template literal", async () => {
+		class MyTestClass {
+			@step("Value: {{first}}, {{last}}")
+			async myMethod(first: string, middle = `a, (b) ${"c"}`, last = "z"): Promise<void> {
+				void first;
+				void middle;
+				void last;
+			}
+		}
 
-		class MyTestClass {}
+		await new MyTestClass().myMethod("x");
+		expect(collectedSteps[0]).toBe("Value: x, z");
+	});
 
-		// Apply the @step decorator manually to match what the class decorator would do
-		const decorated = step("Value: {{val}}")(rawFn, {
-			kind: "method",
-			name: "myMethod",
-			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			addInitializer: () => {},
-			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			access: {} as any,
-			metadata: {},
-			static: false,
-			private: false,
-		} as ClassMethodDecoratorContext<MyTestClass, typeof rawFn>);
+	test("should print an explicitly passed argument for a template literal default", async () => {
+		class MyTestClass {
+			@step("Value: {{val}}")
+			async myMethod(val = `hello`): Promise<void> {
+				void val;
+			}
+		}
 
-		const instance = new MyTestClass();
+		await new MyTestClass().myMethod("passed");
+		expect(collectedSteps[0]).toBe("Value: passed");
+	});
 
-		expect(() => decorated.call(instance)).toThrow("Unable to parse the parameter list for method");
+	test("should reject when an omitted template literal default is printed", async () => {
+		class MyTestClass {
+			@step("Value: {{val}}")
+			async myMethod(val = `hello`): Promise<void> {
+				void val;
+			}
+		}
+
+		await expect(new MyTestClass().myMethod()).rejects.toThrow(
+			"Unable to resolve the default value for parameter 'val'"
+		);
+		expect(collectedSteps).toEqual([]);
 	});
 });

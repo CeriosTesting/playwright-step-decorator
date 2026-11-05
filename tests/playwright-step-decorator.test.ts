@@ -205,7 +205,7 @@ test.describe("step decorator", () => {
 		}
 
 		const instance = new MyTestClass();
-		expect(() => instance.myMethod()).toThrow(
+		await expect(instance.myMethod()).rejects.toThrow(
 			"Unable to resolve the default value for parameter 'mode' in method 'MyTestClass.myMethod' while formatting @step placeholder '{{mode}}'. Only literal default values can be printed when the argument is omitted. Pass the argument explicitly or use an index placeholder instead."
 		);
 		expect(collectedSteps).toEqual([]);
@@ -316,7 +316,7 @@ test.describe("step decorator", () => {
 			}
 		}
 		const instance = new MyTestClass();
-		expect(() => instance.foo("value")).toThrow(
+		await expect(instance.foo("value")).rejects.toThrow(
 			"Missing function parameters (param2) in method 'MyTestClass.foo'. Please check your @step decorator placeholders."
 		);
 		expect(collectedSteps).toEqual([]);
@@ -331,7 +331,7 @@ test.describe("step decorator", () => {
 		}
 
 		const instance = new MyTestClass();
-		expect(() => instance.foo({ name: "Alice" })).toThrow(
+		await expect(instance.foo({ name: "Alice" })).rejects.toThrow(
 			"Unable to resolve named @step placeholders (name) in method 'MyTestClass.foo' because this signature contains parameters that cannot be matched by name ({ name }). Named placeholders support identifier parameters, default values, and rest parameters. Use index placeholders like [[0]] for destructured or unsupported parameters."
 		);
 		expect(collectedSteps).toEqual([]);
@@ -407,7 +407,7 @@ test.describe("step decorator", () => {
 			}
 		}
 		const instance = new MyTestClass();
-		expect(() => instance.foo("test")).toThrow("Parameter index '2' is out of bounds");
+		await expect(instance.foo("test")).rejects.toThrow("Parameter index '2' is out of bounds");
 		expect(collectedSteps).toEqual([]);
 	});
 
@@ -419,7 +419,9 @@ test.describe("step decorator", () => {
 			}
 		}
 		const instance = new MyTestClass();
-		expect(() => instance.foo({ prop: "test" })).toThrow("Property 'nonExistent' does not exist on parameter 'obj'");
+		await expect(instance.foo({ prop: "test" })).rejects.toThrow(
+			"Property 'nonExistent' does not exist on parameter 'obj'"
+		);
 		expect(collectedSteps).toEqual([]);
 	});
 

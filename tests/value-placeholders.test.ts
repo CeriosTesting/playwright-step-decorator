@@ -176,19 +176,91 @@ test.describe("step decorator - __key__ value placeholders", () => {
 		expect(collectedSteps[0]).toBe("__key__ [[0]] | {{text}} [[0]] __key__");
 	});
 
-	test("should throw when a placeholder has no selector at runtime", () => {
+	test("should keep double underscores as literal text without the values option", async () => {
+		class MyTestClass {
+			@step("Read __NEXT_DATA__ payload")
+			async dunder(): Promise<void> {}
+
+			@step("{{a__b}},{{c__d}}")
+			async snakeNames(a__b: string, c__d: string): Promise<void> {
+				void a__b;
+				void c__d;
+			}
+
+			@step("report__{{date}}__final.pdf")
+			async fileName(date: string): Promise<void> {
+				void date;
+			}
+
+			@step("{{a__b__c}}")
+			async doubleUnderscoreName(a__b__c: string): Promise<void> {
+				void a__b__c;
+			}
+		}
+
+		const instance = new MyTestClass();
+		await instance.dunder();
+		await instance.snakeNames("1", "2");
+		await instance.fileName("today");
+		await instance.doubleUnderscoreName("x");
+		expect(collectedSteps).toEqual(["Read __NEXT_DATA__ payload", "1,2", "report__today__final.pdf", "x"]);
+	});
+
+	test("should not treat spans containing placeholders as keys when values is passed", async () => {
+		class MyTestClass {
+			@step("report__{{date}}__final __kind__ {{a__b}},{{c__d}} __[[0]]__", {
+				values: { kind: () => "pdf" },
+			})
+			async myMethod(date: string, a__b: string, c__d: string): Promise<void> {
+				void date;
+				void a__b;
+				void c__d;
+			}
+		}
+
+		await new MyTestClass().myMethod("today", "1", "2");
+		expect(collectedSteps[0]).toBe("report__today__final pdf 1,2 __today__");
+	});
+
+	test("should print literal double underscores through a selector when values is passed", async () => {
+		class MyTestClass {
+			@step("Read __literal__ as __user__", {
+				values: { literal: () => "__NEXT_DATA__", user: (user: string) => user },
+			})
+			async myMethod(user: string): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod("Alice");
+		expect(collectedSteps[0]).toBe("Read __NEXT_DATA__ as Alice");
+	});
+
+	test("should reject when a placeholder has no selector at runtime", async () => {
 		const description: string = "Hello __name__";
 		class MyTestClass {
 			@step(description, { values: { other: () => "x" } })
 			async myMethod(): Promise<void> {}
 		}
 
-		expect(() => new MyTestClass().myMethod()).toThrow(
+		await expect(new MyTestClass().myMethod()).rejects.toThrow(
 			"Missing value selector for placeholder '__name__' in method 'MyTestClass.myMethod'"
 		);
 	});
 
-	test("should wrap errors thrown by a selector and keep the cause", () => {
+	test("should return a rejected promise instead of throwing synchronously", async () => {
+		class MyTestClass {
+			@step("Hello {{missing}}")
+			async myMethod(): Promise<void> {}
+		}
+
+		const result = new MyTestClass().myMethod();
+		expect(result).toBeInstanceOf(Promise);
+		await expect(result).rejects.toThrow("Missing function parameters (missing)");
+		expect(collectedSteps).toEqual([]);
+	});
+
+	test("should wrap errors thrown by a selector and keep the cause", async () => {
 		const failure = new Error("boom");
 		class MyTestClass {
 			@step("Hello __name__", {
@@ -201,12 +273,7 @@ test.describe("step decorator - __key__ value placeholders", () => {
 			async myMethod(): Promise<void> {}
 		}
 
-		let error: unknown;
-		try {
-			void new MyTestClass().myMethod();
-		} catch (e) {
-			error = e;
-		}
+		const error: unknown = await new MyTestClass().myMethod().catch((e: unknown) => e);
 		expect(error).toBeInstanceOf(Error);
 		expect((error as Error).message).toBe(
 			"Value selector for placeholder '__name__' in method 'MyTestClass.myMethod' threw: boom"
@@ -225,9 +292,15 @@ export function valuePlaceholderTypeChecks(): void {
 			void contacts;
 		}
 
-		// @ts-expect-error -- the description contains __name__, so the values option is required
-		@step("Missing values __name__")
-		async missingValues(user: User): Promise<void> {
+		// Without the values option, __name__ is literal text.
+		@step("Literal __name__")
+		async literalText(user: User): Promise<void> {
+			void user;
+		}
+
+		// A span containing a placeholder is not a key, so `date` is the only selector needed for __date__.
+		@step("report__{{user}}__final __date__", { values: { date: () => "today" } })
+		async spanWithPlaceholder(user: User): Promise<void> {
 			void user;
 		}
 
@@ -267,4 +340,23 @@ export function valuePlaceholderTypeChecks(): void {
 		}
 	}
 	void TypeChecks;
+
+	class Constructable {}
+
+	// @ts-expect-error -- function inputs are called as zero-argument factories, so this one would get no argument
+	void stepResult((text: string) => text.length);
+
+	// @ts-expect-error -- the same applies when a contextual type asks for the function itself
+	const resolvedFunction: Promise<(text: string) => number> = stepResult((text: string) => text.length);
+	void resolvedFunction;
+
+	// @ts-expect-error -- a class can't be called without `new`, so it can't be resolved directly
+	void stepResult(Constructable);
+
+	const resolvedClass: Promise<typeof Constructable> = stepResult(() => Constructable);
+	const resolvedValue: Promise<string> = stepResult("text");
+	const resolvedFactory: Promise<number> = stepResult(() => 1);
+	void resolvedClass;
+	void resolvedValue;
+	void resolvedFactory;
 }

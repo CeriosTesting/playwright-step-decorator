@@ -7,7 +7,9 @@ import type { Location } from "@playwright/test";
 const stepContext = new AsyncLocalStorage<TestStepInfo>();
 
 type StepMethod<This, Args extends unknown[], ReturnType> = (this: This, ...args: Args) => Promise<ReturnType>;
-type NonFunctionValue<T> = T extends (...args: unknown[]) => unknown ? never : T;
+type NonFunctionValue<T> = T extends ((...args: never[]) => unknown) | (abstract new (...args: never[]) => unknown)
+	? never
+	: T;
 /**
  * Playwright `test.step()` options forwarded by the `@step` decorator.
  */
@@ -26,12 +28,12 @@ type NoInferArgs<T> = [T][T extends unknown ? 0 : never];
 export type StepValueSelector<Args extends unknown[]> = (...args: NoInferArgs<Args>) => unknown;
 /**
  * Extracts the keys of all `__key__` placeholders from a literal description type.
- * Empty keys and keys containing whitespace are skipped (their closing `__` may open the next placeholder),
- * matching the runtime behaviour.
+ * Empty keys and keys containing whitespace, braces or square brackets are skipped (their closing `__` may open the
+ * next placeholder), matching the runtime behaviour.
  */
 export type ValuePlaceholderKeys<Description extends string> =
 	Description extends `${string}__${infer Key}__${infer Rest}`
-		? Key extends "" | `${string}${" " | "\t" | "\n"}${string}`
+		? Key extends "" | `${string}${" " | "\t" | "\n" | "{" | "}" | "[" | "]"}${string}`
 			? ValuePlaceholderKeys<`__${Rest}`>
 			: Key | ValuePlaceholderKeys<Rest>
 		: never;
@@ -47,11 +49,6 @@ export type StepValues<Description extends string, Args extends unknown[]> = str
 export type StepOptionsWithValues<Description extends string, Args extends unknown[]> = StepOptions & {
 	values: StepValues<Description, Args>;
 };
-type PlainDescription<Description extends string> = string extends Description
-	? Description
-	: [ValuePlaceholderKeys<Description>] extends [never]
-		? Description
-		: never;
 type StepDecorator<Args extends unknown[]> = <This, ReturnType>(
 	target: StepMethod<This, Args, ReturnType>,
 	context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
@@ -72,6 +69,13 @@ type PlaceholderToken = { end: number; start: number } & (
 	| { key: string; kind: "value" }
 );
 type NamedParameterLookup = ReadonlyMap<string, { defaultValue?: ParsedDefaultValue; index: number; isRest: boolean }>;
+
+/**
+ * The most values `formatPlaceholderValue` serializes as JSON. Objects that share references are expanded at every
+ * use, so a heavily shared graph could otherwise grow exponentially. Larger values use the depth-limited formatter.
+ */
+const MAX_SERIALIZED_VALUES = 10_000;
+const INSPECT_OPTIONS = { breakLength: Infinity, depth: 2 };
 
 let decoratorModulePath: string | undefined;
 
@@ -94,9 +98,9 @@ export function stepResult(valueOrFactory?: unknown) {
  *
  * Placeholders in the description (e.g. `{{user.name}}` or `[[0]]`) will be replaced with actual argument values at runtime.
  *
- * `__key__` placeholders are replaced with the result of the matching lambda in the `values` option. Each lambda
- * receives the decorated method's arguments with their real types, and the compiler checks that every `__key__`
- * in a literal description has exactly one matching selector.
+ * When the `values` option is passed, `__key__` placeholders are replaced with the result of the matching lambda.
+ * Each lambda receives the decorated method's arguments with their real types, and the compiler checks that every
+ * `__key__` in a literal description has exactly one matching selector. Without `values`, `__key__` is literal text.
  *
  * @template This The type of the class instance.
  * @template Args The argument types of the decorated method.
@@ -143,9 +147,10 @@ export function stepResult(valueOrFactory?: unknown) {
  * }
  * ```
  *
- * @throws {Error} If placeholders reference missing or out-of-bounds parameters.
- * @throws {Error} If property access in a placeholder is invalid.
- * @throws {Error} If a `__key__` placeholder has no selector in `values`, or its selector throws.
+ * The decorated method's promise rejects with an error, before the step starts, in these cases:
+ * - A placeholder references a missing or out-of-bounds parameter.
+ * - Property access in a placeholder is invalid.
+ * - A `__key__` placeholder has no selector in `values`, or its selector throws.
  */
 export function step(): GenericStepDecorator;
 export function step(options: StepOptions): GenericStepDecorator;
@@ -153,10 +158,7 @@ export function step<const Description extends string, Args extends unknown[]>(
 	description: Description,
 	options: StepOptionsWithValues<Description, Args>
 ): StepDecorator<Args>;
-export function step<const Description extends string>(
-	description: PlainDescription<Description>,
-	options?: StepOptions
-): GenericStepDecorator;
+export function step(description: string, options?: StepOptions): GenericStepDecorator;
 export function step(descriptionOrOptions?: StepDescriptionOrOptions, options?: RuntimeStepOptions) {
 	const description = typeof descriptionOrOptions === "string" ? descriptionOrOptions : undefined;
 	const resolvedOptions = typeof descriptionOrOptions === "string" ? options : (descriptionOrOptions ?? options);
@@ -171,11 +173,12 @@ function createStepDecorator(description?: string, options?: RuntimeStepOptions)
 		target: StepMethod<This, Args, ReturnType>,
 		context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
 	) {
-		return function replacementMethod(this: This, ...args: Args) {
-			const methodName = `${this.constructor.name}.${context.name as string}`;
+		// Async so that an unresolvable description rejects the returned promise instead of throwing synchronously.
+		return async function replacementMethod(this: This, ...args: Args) {
+			const methodName = getMethodName(this, context);
 			let formattedDescription = methodName;
 			if (description) {
-				const tokens = tokenizeDescription(description);
+				const tokens = tokenizeDescription(description, values !== undefined);
 				const parameterLookup = createNamedParameterLookup(target, methodName, tokens);
 
 				formattedDescription = formatDescription(methodName, description, tokens, parameterLookup, args, values);
@@ -201,6 +204,20 @@ function createStepDecorator(description?: string, options?: RuntimeStepOptions)
 			);
 		};
 	};
+}
+
+/**
+ * Builds the `ClassName.methodName` label. A static method's `this` is the class itself, and a detached call has no
+ * `this`, in which case the label is just the method name.
+ */
+function getMethodName(instance: unknown, context: { name: string | symbol; static: boolean }): string {
+	const owner: unknown =
+		context.static && typeof instance === "function"
+			? instance.name
+			: (instance as { constructor?: { name?: unknown } } | null | undefined)?.constructor?.name;
+	const name = String(context.name);
+
+	return typeof owner === "string" && owner ? `${owner}.${name}` : name;
 }
 
 /**
@@ -253,7 +270,7 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 }
 
 function extractStackFrameLocation(stackLine: string): { file: string; line: number; column: number } | undefined {
-	const match = stackLine.match(/\((.+):(\d+):(\d+)\)$/) || stackLine.match(/at\s+(.+):(\d+):(\d+)$/);
+	const match = stackLine.match(/\((.+):(\d+):(\d+)\)$/) || stackLine.match(/at\s+(?:async\s+)?(.+):(\d+):(\d+)$/);
 	if (!match) {
 		return undefined;
 	}
@@ -285,7 +302,7 @@ function normalizeStackPath(value: string): string {
 
 function isIgnoredCallSitePath(normalizedPath: string, currentDecoratorModulePath?: string): boolean {
 	return (
-		normalizedPath.includes("node:internal") ||
+		normalizedPath.startsWith("node:") ||
 		normalizedPath.includes("/node_modules/") ||
 		isDecoratorInternalPath(normalizedPath, currentDecoratorModulePath)
 	);
@@ -333,11 +350,12 @@ function getDecoratorModulePath(): string | undefined {
  * take everything up to the following `__` as the key, and accept it when it is non-empty and has no whitespace.
  * An invalid span is skipped and its closing `__` may open the next span.
  * `{{path}}` and `[[index]]` placeholders that overlap a `__key__` span are ignored.
+ * Without the `values` option there are no `__key__` spans, so double underscores stay literal text.
  */
-function tokenizeDescription(description: string): PlaceholderToken[] {
+function tokenizeDescription(description: string, hasValues: boolean): PlaceholderToken[] {
 	const valueTokens: PlaceholderToken[] = [];
 	let searchFrom = 0;
-	while (searchFrom < description.length) {
+	while (hasValues && searchFrom < description.length) {
 		const open = description.indexOf("__", searchFrom);
 		if (open === -1) break;
 		const close = description.indexOf("__", open + 2);
@@ -372,7 +390,7 @@ function tokenizeDescription(description: string): PlaceholderToken[] {
 }
 
 function isValidValuePlaceholderKey(key: string): boolean {
-	return key !== "" && !/[ \t\n]/u.test(key);
+	return key !== "" && !/[ \t\n{}[\]]/u.test(key);
 }
 
 function createNamedParameterLookup(
@@ -457,7 +475,7 @@ function parseFunctionParameter(parameterSource: string, index: number): ParsedP
 		return undefined;
 	}
 
-	const defaultValueIndex = findFirstTopLevelCharacter(normalizedSource, "=");
+	const defaultValueIndex = findTopLevelCharacters(normalizedSource, "=")?.[0];
 	const defaultValueSource =
 		defaultValueIndex === undefined ? undefined : normalizedSource.slice(defaultValueIndex + 1).trim();
 	const bindingSource =
@@ -475,7 +493,7 @@ function parseFunctionParameter(parameterSource: string, index: number): ParsedP
 		return { kind: "unsupported", index, source: summarizedSource };
 	}
 
-	if (/^[A-Za-z_$][\w$]*$/u.test(candidate)) {
+	if (/^[\p{ID_Start}_$][\p{ID_Continue}$‌‍]*$/u.test(candidate)) {
 		return {
 			kind: "named",
 			defaultValue: isRest ? undefined : parseDefaultValue(defaultValueSource),
@@ -489,7 +507,7 @@ function parseFunctionParameter(parameterSource: string, index: number): ParsedP
 }
 
 function normalizeParameterSource(source: string): string {
-	return source.replace(/\s+/g, " ").trim();
+	return stripComments(source).trim();
 }
 
 function parseDefaultValue(defaultValueSource?: string): ParsedDefaultValue | undefined {
@@ -522,8 +540,14 @@ function parseLiteralDefaultValue(source: string): unknown {
 		return false;
 	}
 
-	if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(source)) {
-		return Number(source);
+	if (
+		/^-?(?:0[xX][\da-fA-F_]+|0[oO][0-7_]+|0[bB][01_]+|(?:\d[\d_]*\.?[\d_]*|\.\d[\d_]*)(?:[eE][+-]?\d[\d_]*)?)$/u.test(
+			source
+		)
+	) {
+		// `Number()` rejects a sign on hex, octal and binary literals, so the sign is applied separately.
+		const magnitude = Number(source.replace(/^-/u, "").replace(/_/gu, ""));
+		return source.startsWith("-") ? -magnitude : magnitude;
 	}
 
 	if (/^-?(?:0|[1-9]\d*)n$/u.test(source)) {
@@ -610,76 +634,105 @@ function parseQuotedStringLiteral(source: string): string | undefined {
 	return result;
 }
 
-function findMatchingClosingParen(source: string, openParenIndex: number): number {
+/**
+ * Finds the end of a comment, string literal or template literal that starts at `start`. The scanners below use this
+ * to skip text whose punctuation has no syntactic meaning, such as a `)` inside a string.
+ *
+ * @returns The index of the span's last character, `-1` if the span is unterminated, or `undefined` if `start` is ordinary code.
+ */
+function findOpaqueSpanEnd(source: string, start: number): number | undefined {
+	const char = source[start];
+	const next = source[start + 1];
+
+	if (char === "/" && next === "/") {
+		const newline = source.indexOf("\n", start + 2);
+		return newline === -1 ? source.length - 1 : newline;
+	}
+
+	if (char === "/" && next === "*") {
+		const close = source.indexOf("*/", start + 2);
+		return close === -1 ? -1 : close + 1;
+	}
+
+	if (char === "'" || char === '"') {
+		return findQuotedStringEnd(source, start);
+	}
+
+	if (char === "`") {
+		return findTemplateLiteralEnd(source, start);
+	}
+
+	return undefined;
+}
+
+function findQuotedStringEnd(source: string, start: number): number {
+	for (let i = start + 1; i < source.length; i++) {
+		if (source[i] === "\\") {
+			i += 1;
+		} else if (source[i] === source[start]) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+function findTemplateLiteralEnd(source: string, start: number): number {
+	for (let i = start + 1; i < source.length; i++) {
+		if (source[i] === "\\") {
+			i += 1;
+		} else if (source[i] === "`") {
+			return i;
+		} else if (source[i] === "$" && source[i + 1] === "{") {
+			const close = findInterpolationEnd(source, i + 1);
+			if (close === -1) {
+				return -1;
+			}
+			i = close;
+		}
+	}
+	return -1;
+}
+
+function findInterpolationEnd(source: string, openBraceIndex: number): number {
 	let depth = 0;
-	let quote: "'" | '"' | undefined;
-	let inLineComment = false;
-	let inBlockComment = false;
-
-	for (let i = openParenIndex; i < source.length; i++) {
-		const char = source[i];
-		const next = source[i + 1];
-
-		if (inLineComment) {
-			if (char === "\n") {
-				inLineComment = false;
+	for (let i = openBraceIndex; i < source.length; i++) {
+		const spanEnd = findOpaqueSpanEnd(source, i);
+		if (spanEnd !== undefined) {
+			if (spanEnd === -1) {
+				return -1;
 			}
-			continue;
-		}
-
-		if (inBlockComment) {
-			if (char === "*" && next === "/") {
-				inBlockComment = false;
-				i += 1;
-			}
-			continue;
-		}
-
-		if (quote) {
-			if (char === "\\") {
-				i += 1;
-				continue;
-			}
-
-			if (char === quote) {
-				quote = undefined;
-			}
-			continue;
-		}
-
-		if (char === "`") {
-			return -1;
-		}
-
-		if (char === "/" && next === "/") {
-			inLineComment = true;
-			i += 1;
-			continue;
-		}
-
-		if (char === "/" && next === "*") {
-			inBlockComment = true;
-			i += 1;
-			continue;
-		}
-
-		if (char === "'" || char === '"') {
-			quote = char;
-			continue;
-		}
-
-		if (char === "(") {
+			i = spanEnd;
+		} else if (source[i] === "{") {
 			depth += 1;
-			continue;
-		}
-
-		if (char === ")") {
+		} else if (source[i] === "}") {
 			depth -= 1;
 			if (depth === 0) {
 				return i;
 			}
-			if (depth < 0) {
+		}
+	}
+	return -1;
+}
+
+function findMatchingClosingParen(source: string, openParenIndex: number): number {
+	let depth = 0;
+
+	for (let i = openParenIndex; i < source.length; i++) {
+		const spanEnd = findOpaqueSpanEnd(source, i);
+		if (spanEnd !== undefined) {
+			if (spanEnd === -1) {
 				return -1;
+			}
+			i = spanEnd;
+			continue;
+		}
+
+		if (source[i] === "(") {
+			depth += 1;
+		} else if (source[i] === ")") {
+			depth -= 1;
+			if (depth === 0) {
+				return i;
 			}
 		}
 	}
@@ -687,229 +740,71 @@ function findMatchingClosingParen(source: string, openParenIndex: number): numbe
 	return -1;
 }
 
-function splitTopLevel(source: string, delimiter: string): string[] | undefined {
-	const parts: string[] = [];
-	let start = 0;
-	let parenDepth = 0;
-	let braceDepth = 0;
-	let bracketDepth = 0;
-	let quote: "'" | '"' | undefined;
-	let inLineComment = false;
-	let inBlockComment = false;
+/**
+ * Returns the positions of `character` outside any parentheses, braces, brackets, comments and literals,
+ * or `undefined` if `source` is unbalanced.
+ */
+function findTopLevelCharacters(source: string, character: string): number[] | undefined {
+	const positions: number[] = [];
+	let depth = 0;
 
 	for (let i = 0; i < source.length; i++) {
+		const spanEnd = findOpaqueSpanEnd(source, i);
+		if (spanEnd !== undefined) {
+			if (spanEnd === -1) {
+				return undefined;
+			}
+			i = spanEnd;
+			continue;
+		}
+
 		const char = source[i];
-		const next = source[i + 1];
-
-		if (inLineComment) {
-			if (char === "\n") {
-				inLineComment = false;
-			}
-			continue;
-		}
-
-		if (inBlockComment) {
-			if (char === "*" && next === "/") {
-				inBlockComment = false;
-				i += 1;
-			}
-			continue;
-		}
-
-		if (quote) {
-			if (char === "\\") {
-				i += 1;
-				continue;
-			}
-
-			if (char === quote) {
-				quote = undefined;
-			}
-			continue;
-		}
-
-		if (char === "`") {
-			return undefined;
-		}
-
-		if (char === "/" && next === "/") {
-			inLineComment = true;
-			i += 1;
-			continue;
-		}
-
-		if (char === "/" && next === "*") {
-			inBlockComment = true;
-			i += 1;
-			continue;
-		}
-
-		if (char === "'" || char === '"') {
-			quote = char;
-			continue;
-		}
-
-		if (char === delimiter && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
-			parts.push(source.slice(start, i));
-			start = i + 1;
-			continue;
-		}
-
-		if (char === "(") {
-			parenDepth += 1;
-			continue;
-		}
-
-		if (char === ")") {
-			parenDepth -= 1;
-			if (parenDepth < 0) {
-				return undefined;
-			}
-			continue;
-		}
-
-		if (char === "{") {
-			braceDepth += 1;
-			continue;
-		}
-
-		if (char === "}") {
-			braceDepth -= 1;
-			if (braceDepth < 0) {
-				return undefined;
-			}
-			continue;
-		}
-
-		if (char === "[") {
-			bracketDepth += 1;
-			continue;
-		}
-
-		if (char === "]") {
-			bracketDepth -= 1;
-			if (bracketDepth < 0) {
+		if (char === character && depth === 0) {
+			positions.push(i);
+		} else if (char === "(" || char === "{" || char === "[") {
+			depth += 1;
+		} else if (char === ")" || char === "}" || char === "]") {
+			depth -= 1;
+			if (depth < 0) {
 				return undefined;
 			}
 		}
 	}
 
-	if (quote || inBlockComment || parenDepth !== 0 || braceDepth !== 0 || bracketDepth !== 0) {
+	return depth === 0 ? positions : undefined;
+}
+
+function splitTopLevel(source: string, delimiter: string): string[] | undefined {
+	const positions = findTopLevelCharacters(source, delimiter);
+	if (!positions) {
 		return undefined;
 	}
 
+	const parts: string[] = [];
+	let start = 0;
+	for (const position of positions) {
+		parts.push(source.slice(start, position));
+		start = position + 1;
+	}
 	parts.push(source.slice(start));
 	return parts;
 }
 
-function findFirstTopLevelCharacter(source: string, character: string): number | undefined {
-	let parenDepth = 0;
-	let braceDepth = 0;
-	let bracketDepth = 0;
-	let quote: "'" | '"' | undefined;
-	let inLineComment = false;
-	let inBlockComment = false;
-
+function stripComments(source: string): string {
+	let result = "";
 	for (let i = 0; i < source.length; i++) {
-		const char = source[i];
-		const next = source[i + 1];
-
-		if (inLineComment) {
-			if (char === "\n") {
-				inLineComment = false;
-			}
+		const spanEnd = findOpaqueSpanEnd(source, i);
+		if (spanEnd === undefined) {
+			result += source[i];
 			continue;
 		}
 
-		if (inBlockComment) {
-			if (char === "*" && next === "/") {
-				inBlockComment = false;
-				i += 1;
-			}
-			continue;
-		}
-
-		if (quote) {
-			if (char === "\\") {
-				i += 1;
-				continue;
-			}
-
-			if (char === quote) {
-				quote = undefined;
-			}
-			continue;
-		}
-
-		if (char === "`") {
-			return undefined;
-		}
-
-		if (char === "/" && next === "/") {
-			inLineComment = true;
-			i += 1;
-			continue;
-		}
-
-		if (char === "/" && next === "*") {
-			inBlockComment = true;
-			i += 1;
-			continue;
-		}
-
-		if (char === "'" || char === '"') {
-			quote = char;
-			continue;
-		}
-
-		if (char === character && parenDepth === 0 && braceDepth === 0 && bracketDepth === 0) {
-			return i;
-		}
-
-		if (char === "(") {
-			parenDepth += 1;
-			continue;
-		}
-
-		if (char === ")") {
-			parenDepth -= 1;
-			if (parenDepth < 0) {
-				return undefined;
-			}
-			continue;
-		}
-
-		if (char === "{") {
-			braceDepth += 1;
-			continue;
-		}
-
-		if (char === "}") {
-			braceDepth -= 1;
-			if (braceDepth < 0) {
-				return undefined;
-			}
-			continue;
-		}
-
-		if (char === "[") {
-			bracketDepth += 1;
-			continue;
-		}
-
-		if (char === "]") {
-			bracketDepth -= 1;
-			if (bracketDepth < 0) {
-				return undefined;
-			}
-		}
+		const lastIndex = spanEnd === -1 ? source.length - 1 : spanEnd;
+		// A comment still separates tokens, so it becomes a space. Literals are copied unchanged.
+		result += source[i] === "/" ? " " : source.slice(i, lastIndex + 1);
+		i = lastIndex;
 	}
-
-	if (quote || inBlockComment || parenDepth !== 0 || braceDepth !== 0 || bracketDepth !== 0) {
-		return undefined;
-	}
-
-	return undefined;
+	return result;
 }
 
 function summarizeParameterSource(source: string): string {
@@ -1074,13 +969,26 @@ function formatPlaceholderValue(value: unknown): string {
 		return value.name ? `[Function ${value.name}]` : "[Function anonymous]";
 	}
 
-	if (value instanceof Error) {
-		return `${value.name}: ${value.message}`;
+	const specialObject = formatSpecialObject(value);
+	if (specialObject !== undefined) {
+		return specialObject;
 	}
 
 	try {
-		const seen = new WeakSet<object>();
-		const serialized = JSON.stringify(value, (_key, nestedValue) => {
+		// The objects currently being serialized, outermost first. An object that is used twice is only circular
+		// if it contains itself, so finished branches are removed from this list.
+		const ancestors: object[] = [];
+		let serializedValues = 0;
+		const serialized = JSON.stringify(value, function (this: unknown, _key: string, nestedValue: unknown) {
+			serializedValues += 1;
+			if (serializedValues > MAX_SERIALIZED_VALUES) {
+				throw new Error("Value is too large to serialize as JSON.");
+			}
+
+			while (ancestors.length > 0 && ancestors[ancestors.length - 1] !== this) {
+				ancestors.pop();
+			}
+
 			if (typeof nestedValue === "bigint") {
 				return nestedValue.toString();
 			}
@@ -1094,11 +1002,16 @@ function formatPlaceholderValue(value: unknown): string {
 			}
 
 			if (nestedValue && typeof nestedValue === "object") {
-				if (seen.has(nestedValue)) {
+				const specialNestedObject = formatSpecialObject(nestedValue);
+				if (specialNestedObject !== undefined) {
+					return specialNestedObject;
+				}
+
+				if (ancestors.includes(nestedValue)) {
 					return "[Circular]";
 				}
 
-				seen.add(nestedValue);
+				ancestors.push(nestedValue);
 			}
 
 			return nestedValue;
@@ -1111,7 +1024,26 @@ function formatPlaceholderValue(value: unknown): string {
 		// Fall back to the built-in formatter when JSON serialization fails.
 	}
 
-	return inspect(value, { breakLength: Infinity, depth: 2 });
+	return inspect(value, INSPECT_OPTIONS);
+}
+
+/**
+ * Formats objects that `JSON.stringify` would otherwise reduce to `{}`.
+ */
+function formatSpecialObject(value: unknown): string | undefined {
+	if (value instanceof Error) {
+		return `${value.name}: ${value.message}`;
+	}
+
+	if (value instanceof RegExp) {
+		return String(value);
+	}
+
+	if (value instanceof Map || value instanceof Set) {
+		return inspect(value, INSPECT_OPTIONS);
+	}
+
+	return undefined;
 }
 
 function filterDecoratorFrames(stack: string): string {

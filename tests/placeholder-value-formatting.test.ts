@@ -176,7 +176,90 @@ test.describe("step decorator - placeholder value formatting", () => {
 		obj["self"] = obj;
 		// oxlint-disable-next-line typescript-eslint/no-unsafe-argument
 		await new MyTestClass().myMethod(obj);
-		expect(collectedSteps[0]).toContain("[Circular]");
+		expect(collectedSteps[0]).toBe('Value: {"a":1,"self":"[Circular]"}');
+	});
+
+	test("should print an object that is used twice instead of marking it circular", async () => {
+		class MyTestClass {
+			@step("{{inObject}} {{inArray}}")
+			async myMethod(inObject: unknown, inArray: unknown): Promise<void> {
+				void inObject;
+				void inArray;
+			}
+		}
+
+		const shared = { n: 1 };
+		await new MyTestClass().myMethod({ a: shared, b: shared }, [shared, shared]);
+		expect(collectedSteps[0]).toBe('{"a":{"n":1},"b":{"n":1}} [{"n":1},{"n":1}]');
+	});
+
+	test("should mark a cycle that passes through a shared object", async () => {
+		class MyTestClass {
+			@step("[[0]]")
+			async myMethod(value: unknown): Promise<void> {
+				void value;
+			}
+		}
+
+		const shared: Record<string, unknown> = { n: 1 };
+		shared["parent"] = { shared };
+		await new MyTestClass().myMethod({ a: { n: 2 }, b: shared });
+		expect(collectedSteps[0]).toBe('{"a":{"n":2},"b":{"n":1,"parent":{"shared":"[Circular]"}}}');
+	});
+
+	test("should not hang on a heavily shared object graph", async () => {
+		class MyTestClass {
+			@step("[[0]]")
+			async myMethod(value: unknown): Promise<void> {
+				void value;
+			}
+		}
+
+		// Expanding every shared reference would produce 2^60 values, so this falls back to depth-limited output.
+		let graph: Record<string, unknown> = { leaf: true };
+		for (let i = 0; i < 60; i++) {
+			graph = { left: graph, right: graph };
+		}
+
+		await new MyTestClass().myMethod(graph);
+		expect(collectedSteps[0]).toContain("[Object]");
+		expect(collectedSteps[0].length).toBeLessThan(1_000);
+	});
+
+	test("should format Map, Set and RegExp values at the top level", async () => {
+		class MyTestClass {
+			@step("[[0]] | [[1]] | [[2]]")
+			async myMethod(map: unknown, set: unknown, pattern: unknown): Promise<void> {
+				void map;
+				void set;
+				void pattern;
+			}
+		}
+
+		await new MyTestClass().myMethod(new Map([["a", 1]]), new Set([1, 2]), /foo/i);
+		expect(collectedSteps[0]).toBe("Map(1) { 'a' => 1 } | Set(2) { 1, 2 } | /foo/i");
+	});
+
+	test("should format nested Map, Set, RegExp and Error values", async () => {
+		class MyTestClass {
+			@step("[[0]]")
+			async myMethod(value: unknown): Promise<void> {
+				void value;
+			}
+		}
+
+		await new MyTestClass().myMethod({
+			error: new TypeError("bad"),
+			map: new Map([["a", 1]]),
+			pattern: /foo/i,
+			set: new Set([1]),
+		});
+		expect(JSON.parse(collectedSteps[0])).toEqual({
+			error: "TypeError: bad",
+			map: "Map(1) { 'a' => 1 }",
+			pattern: "/foo/i",
+			set: "Set(1) { 1 }",
+		});
 	});
 
 	test("should format an object containing a Symbol value via JSON replacer", async () => {
