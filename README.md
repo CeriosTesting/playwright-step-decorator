@@ -214,7 +214,7 @@ The Playwright report will show the step location as `my-test.spec.ts:10`, not t
 
 - Throws if a named parameter in the description does not exist in the function signature.
 - Throws a targeted error when named placeholders are used with destructured or otherwise unsupported parameter syntax, and suggests using index placeholders instead.
-- Throws if a nested property does not exist on the parameter.
+- Throws if a nested property does not exist on the parameter. If the parameter (or an intermediate property) is `null` or `undefined`, the placeholder prints `null` or `undefined` instead of throwing.
 - Throws if an index placeholder is out of bounds.
 
 ---
