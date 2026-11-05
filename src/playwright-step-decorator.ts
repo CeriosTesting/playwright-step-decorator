@@ -980,7 +980,11 @@ function resolvePlaceholderToken(
 	let value: unknown = resolveNamedParameterValue(methodName, parts[0], placeholder, parameter, args);
 
 	for (let i = 1; i < parts.length; i++) {
-		if (value && typeof value === "object" && parts[i] in value) {
+		if (value === undefined || value === null) {
+			// Short-circuit like optional chaining and print the nullish value itself.
+			break;
+		}
+		if (typeof value === "object" && parts[i] in value) {
 			value = (value as Record<string, unknown>)[parts[i]];
 		} else {
 			throw new Error(

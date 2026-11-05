@@ -100,6 +100,44 @@ test.describe("step decorator - __key__ value placeholders", () => {
 		);
 	});
 
+	test("should print undefined when a selector reads from an omitted optional parameter", async () => {
+		class MyTestClass {
+			@step("Value: __name__", { values: { name: user => user?.name } })
+			async myMethod(user?: User): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod();
+		expect(collectedSteps[0]).toBe("Value: undefined");
+	});
+
+	test("should print null when a selector returns a null parameter", async () => {
+		class MyTestClass {
+			@step("Value: __user__", { values: { user: user => user } })
+			async myMethod(user: User | null): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod(null);
+		expect(collectedSteps[0]).toBe("Value: null");
+	});
+
+	test("should resolve nullish arguments the same way for named and value placeholders", async () => {
+		class MyTestClass {
+			@step("{{user.address.street}} / __street__", {
+				values: { street: user => user.address && user.address.street },
+			})
+			async myMethod(user: { address: { street: string } | null }): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod({ address: null });
+		expect(collectedSteps[0]).toBe("null / null");
+	});
+
 	test("should not forward the values option to test.step but keep other options", async () => {
 		class MyTestClass {
 			@step("Open __name__", { box: true, timeout: 1234, values: { name: (name: string) => name } })
@@ -214,6 +252,17 @@ export function valuePlaceholderTypeChecks(): void {
 		// @ts-expect-error -- `nickname` does not exist on User
 		@step("Bad property __name__", { values: { name: user => user.nickname } })
 		async badProperty(user: User): Promise<void> {
+			void user;
+		}
+
+		// @ts-expect-error -- `user` may be undefined, so the selector has to handle it
+		@step("Unsafe optional __name__", { values: { name: user => user.name } })
+		async unsafeOptional(user?: User): Promise<void> {
+			void user;
+		}
+
+		@step("Safe optional __name__", { values: { name: user => user?.name } })
+		async safeOptional(user?: User): Promise<void> {
 			void user;
 		}
 	}

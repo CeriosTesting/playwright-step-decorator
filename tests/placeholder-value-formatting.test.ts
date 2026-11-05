@@ -33,6 +33,54 @@ test.describe("step decorator - placeholder value formatting", () => {
 		expect(collectedSteps[0]).toBe("Value: undefined");
 	});
 
+	test("should format a nested placeholder on an undefined parameter as 'undefined'", async () => {
+		class MyTestClass {
+			@step("Value: {{user.name}}")
+			async myMethod(user?: { name: string }): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod(undefined);
+		expect(collectedSteps[0]).toBe("Value: undefined");
+	});
+
+	test("should format a nested placeholder on a null parameter as 'null'", async () => {
+		class MyTestClass {
+			@step("Value: {{user.name}}")
+			async myMethod(user: { name: string } | null): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod(null);
+		expect(collectedSteps[0]).toBe("Value: null");
+	});
+
+	test("should format a deep nested placeholder with a null intermediate property as 'null'", async () => {
+		class MyTestClass {
+			@step("Value: {{user.address.street}}")
+			async myMethod(user: { address: { street: string } | null }): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod({ address: null });
+		expect(collectedSteps[0]).toBe("Value: null");
+	});
+
+	test("should still format a nested placeholder on a nullable parameter when it is filled", async () => {
+		class MyTestClass {
+			@step("Value: {{user.name}}")
+			async myMethod(user?: { name: string } | null): Promise<void> {
+				void user;
+			}
+		}
+
+		await new MyTestClass().myMethod({ name: "Alice" });
+		expect(collectedSteps[0]).toBe("Value: Alice");
+	});
+
 	test("should format boolean true as 'true'", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")

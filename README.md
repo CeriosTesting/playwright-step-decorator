@@ -222,6 +222,7 @@ Notes:
 
 - Keys can be numeric (`__0__` → `{ 0: ... }`) or names (`__role__` → `{ role: ... }`). Keys are any text between `__` and `__` without whitespace. Empty or whitespace spans such as `a __ b __ c` stay as literal text.
 - Lambdas receive the arguments exactly as passed; omitted optional arguments are `undefined`.
+- A lambda that returns `null` or `undefined` prints `null` or `undefined`. For nullable parameters, use optional chaining (`user => user?.name`), which the compiler requires when the parameter's type allows `null` or `undefined`.
 - The returned value is formatted like any other placeholder (strings as-is, objects as JSON).
 - If the description is a plain `string` variable instead of a literal, keys can't be checked at compile time. A missing selector then throws at runtime.
 
@@ -257,7 +258,7 @@ The Playwright report will show the step location as `my-test.spec.ts:10`, not t
 
 - Throws if a named parameter in the description does not exist in the function signature.
 - Throws a targeted error when named placeholders are used with destructured or otherwise unsupported parameter syntax, and suggests using index placeholders instead.
-- Throws if a nested property does not exist on the parameter.
+- Throws if a nested property does not exist on the parameter. If the parameter (or an intermediate property) is `null` or `undefined`, the placeholder prints `null` or `undefined` instead of throwing.
 - Throws if an index placeholder is out of bounds.
 - Throws if a `__key__` placeholder has no selector in `values`. This is a compile-time error for literal descriptions.
 - If a `values` selector throws, the decorator rethrows a descriptive error with the original error as `cause`.
