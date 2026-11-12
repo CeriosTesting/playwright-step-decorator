@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { step } from "../src/playwright-step-decorator";
+import { step, stepResult } from "../src/playwright-step-decorator";
 
 import { collectedSteps, setupMockStep } from "./helpers";
 
@@ -10,10 +10,11 @@ test.describe("step decorator - template literal in parameter list", () => {
 	test("should resolve other parameters when a parameter default is a template literal", async () => {
 		class MyTestClass {
 			@step("Value: {{first}}, {{last}}")
-			async myMethod(first: string, middle = `a, (b) ${"c"}`, last = "z"): Promise<void> {
+			myMethod(first: string, middle = `a, (b) ${"c"}`, last = "z"): Promise<void> {
 				void first;
 				void middle;
 				void last;
+				return stepResult();
 			}
 		}
 
@@ -24,8 +25,9 @@ test.describe("step decorator - template literal in parameter list", () => {
 	test("should print an explicitly passed argument for a template literal default", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val = `hello`): Promise<void> {
+			myMethod(val = `hello`): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -36,8 +38,9 @@ test.describe("step decorator - template literal in parameter list", () => {
 	test("should reject when an omitted template literal default is printed", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val = `hello`): Promise<void> {
+			myMethod(val = `hello`): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 

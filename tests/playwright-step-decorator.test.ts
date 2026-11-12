@@ -16,7 +16,7 @@ type MockStepInfo = {
 	skip: TestStepInfo["skip"];
 };
 
-const getCurrentLineNumber = () => {
+const getCurrentLineNumber = (): number => {
 	const stack = new Error().stack;
 	if (!stack) return -1;
 	const line = stack.split("\n")[2];
@@ -25,15 +25,17 @@ const getCurrentLineNumber = () => {
 	return match ? Number(match[1]) : -1;
 };
 
-const createDeferred = <T = void>() => {
-	let resolve!: (value: T | PromiseLike<T>) => void;
-	const promise = new Promise<T>(resolver => {
-		resolve = resolver;
+type Deferred<T> = { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void };
+
+const createDeferred = <T = void>(): Deferred<T> => {
+	let resolveDeferred!: Deferred<T>["resolve"];
+	const promise = new Promise<T>(resolve => {
+		resolveDeferred = resolve;
 	});
-	return { promise, resolve };
+	return { promise, resolve: resolveDeferred };
 };
 
-const withMockedErrorStack = async (stack: string, action: () => Promise<void>) => {
+const withMockedErrorStack = async (stack: string, action: () => Promise<void>): Promise<void> => {
 	const originalError = globalThis.Error;
 	class MockError extends originalError {
 		override stack: string;
@@ -61,7 +63,11 @@ const withMockedErrorStack = async (stack: string, action: () => Promise<void>) 
 	}
 };
 
-const mockTestStep = async (desc: string, fn: (step: TestStepInfo) => Promise<unknown>, options?: MockStepOptions) => {
+const mockTestStep = async (
+	desc: string,
+	fn: (step: TestStepInfo) => Promise<unknown>,
+	options?: MockStepOptions
+): Promise<unknown> => {
 	collectedSteps.push(desc);
 	collectedLocations.push(options?.location);
 	collectedStepOptions.push(options ? { ...options } : undefined);
@@ -104,7 +110,7 @@ test.describe("stepResult helper", () => {
 	});
 
 	test("should resolve a function value when it is returned from a lambda", async () => {
-		const actualFunction = () => "value";
+		const actualFunction = (): string => "value";
 
 		expect(await stepResult(() => actualFunction)).toBe(actualFunction);
 	});
@@ -134,8 +140,8 @@ test.describe("step decorator", () => {
 	test("should replace simple parameter in description", async () => {
 		class MyTestClass {
 			@step("Class method called with {{param}}")
-			async myMethod(param: string): Promise<string> {
-				return `Called with ${param}`;
+			myMethod(param: string): Promise<string> {
+				return stepResult(`Called with ${param}`);
 			}
 		}
 
@@ -149,8 +155,8 @@ test.describe("step decorator", () => {
 	test("should resolve named placeholders for parameters with default values", async () => {
 		class MyTestClass {
 			@step("Greeting for {{name}}")
-			async myMethod(name = "Guest"): Promise<string> {
-				return name;
+			myMethod(name = "Guest"): Promise<string> {
+				return stepResult(name);
 			}
 		}
 
@@ -164,8 +170,8 @@ test.describe("step decorator", () => {
 	test("should print the default value when a named placeholder uses an omitted defaulted parameter", async () => {
 		class MyTestClass {
 			@step("Greeting for {{name}}")
-			async myMethod(name = "Guest"): Promise<string> {
-				return name;
+			myMethod(name = "Guest"): Promise<string> {
+				return stepResult(name);
 			}
 		}
 
@@ -179,8 +185,8 @@ test.describe("step decorator", () => {
 	test("should print an omitted literal union default value in a named placeholder", async () => {
 		class MyTestClass {
 			@step("Mode {{mode}}")
-			async myMethod(mode: "auto" | "manual" = "auto"): Promise<string> {
-				return mode;
+			myMethod(mode: "auto" | "manual" = "auto"): Promise<string> {
+				return stepResult(mode);
 			}
 		}
 
@@ -199,8 +205,8 @@ test.describe("step decorator", () => {
 
 		class MyTestClass {
 			@step("Mode {{mode}}")
-			async myMethod(mode: Mode = Mode.Auto): Promise<Mode> {
-				return mode;
+			myMethod(mode: Mode = Mode.Auto): Promise<Mode> {
+				return stepResult(mode);
 			}
 		}
 
@@ -214,8 +220,8 @@ test.describe("step decorator", () => {
 	test("should use default description if none provided", async () => {
 		class MyTestClass {
 			@step()
-			async foo() {
-				return "bar";
+			foo(): Promise<string> {
+				return stepResult("bar");
 			}
 		}
 		const instance = new MyTestClass();
@@ -294,8 +300,8 @@ test.describe("step decorator", () => {
 	test("should use the default step name when only options are provided", async () => {
 		class MyTestClass {
 			@step({ timeout: 250 })
-			async myMethod(): Promise<string> {
-				return "done";
+			myMethod(): Promise<string> {
+				return stepResult("done");
 			}
 		}
 
@@ -312,8 +318,8 @@ test.describe("step decorator", () => {
 		expect(() => {
 			class MyTestClass {
 				@step("Test with {{param2}}")
-				async foo(param1: string) {
-					return param1;
+				foo(param1: string): Promise<string> {
+					return stepResult(param1);
 				}
 			}
 			void MyTestClass;
@@ -324,8 +330,8 @@ test.describe("step decorator", () => {
 		expect(() => {
 			class MyTestClass {
 				@step("User {{name}}")
-				async foo({ name }: { name: string }) {
-					return name;
+				foo({ name }: { name: string }): Promise<string> {
+					return stepResult(name);
 				}
 			}
 			void MyTestClass;
@@ -347,8 +353,8 @@ test.describe("step decorator", () => {
 			class MyTestClass {
 				@step("Value {{value}}")
 				@wrap
-				async foo(value: string) {
-					return value;
+				foo(value: string): Promise<string> {
+					return stepResult(value);
 				}
 			}
 			void MyTestClass;
@@ -367,8 +373,8 @@ test.describe("step decorator", () => {
 		class MyTestClass {
 			@wrap
 			@step("Value {{value}}")
-			async foo(value: string) {
-				return value;
+			foo(value: string): Promise<string> {
+				return stepResult(value);
 			}
 		}
 
@@ -379,8 +385,8 @@ test.describe("step decorator", () => {
 	test("should replace multiple placeholders in description", async () => {
 		class MyTestClass {
 			@step("Params: {{a}}, {{b}}")
-			async foo(a: string, b: number) {
-				return `${a} ${b}`;
+			foo(a: string, b: number): Promise<string> {
+				return stepResult(`${a} ${b}`);
 			}
 		}
 		const instance = new MyTestClass();
@@ -391,8 +397,8 @@ test.describe("step decorator", () => {
 	test("should support mixing named and index placeholders", async () => {
 		class MyTestClass {
 			@step("Array value at [[0]] is {{value}}")
-			async foo(value: string) {
-				return `Value is ${value}`;
+			foo(value: string): Promise<string> {
+				return stepResult(`Value is ${value}`);
 			}
 		}
 		const instance = new MyTestClass();
@@ -403,8 +409,8 @@ test.describe("step decorator", () => {
 	test("should serialize object and rest-parameter placeholders into readable step text", async () => {
 		class MyTestClass {
 			@step("Payload {{payload}} with items {{items}}")
-			async foo(payload: { name: string }, ...items: string[]) {
-				return `${payload.name}:${items.length}`;
+			foo(payload: { name: string }, ...items: string[]): Promise<string> {
+				return stepResult(`${payload.name}:${items.length}`);
 			}
 		}
 
@@ -417,8 +423,8 @@ test.describe("step decorator", () => {
 	test("should handle nested object placeholders", async () => {
 		class MyTestClass {
 			@step("Nested value: {{obj.prop}}")
-			async foo(obj: { prop: string }) {
-				return `Value is ${obj.prop}`;
+			foo(obj: { prop: string }): Promise<string> {
+				return stepResult(`Value is ${obj.prop}`);
 			}
 		}
 		const instance = new MyTestClass();
@@ -429,8 +435,8 @@ test.describe("step decorator", () => {
 	test("should handle multiple placeholders in nested objects", async () => {
 		class MyTestClass {
 			@step("Values: {{obj.prop1}}, {{obj.prop2}}")
-			async foo(obj: { prop1: string; prop2: number }) {
-				return `Values are ${obj.prop1} and ${obj.prop2}`;
+			foo(obj: { prop1: string; prop2: number }): Promise<string> {
+				return stepResult(`Values are ${obj.prop1} and ${obj.prop2}`);
 			}
 		}
 		const instance = new MyTestClass();
@@ -442,8 +448,8 @@ test.describe("step decorator", () => {
 		expect(() => {
 			class MyTestClass {
 				@step("Value at [[2]] is {{value}}")
-				async foo(value: string) {
-					return `Value is ${value}`;
+				foo(value: string): Promise<string> {
+					return stepResult(`Value is ${value}`);
 				}
 			}
 			void MyTestClass;
@@ -455,8 +461,8 @@ test.describe("step decorator", () => {
 	test("should reject when an index is declared but the argument was not passed", async () => {
 		class MyTestClass {
 			@step("Value at [[1]]")
-			async foo(first: string, second?: string) {
-				return `${first}${second}`;
+			foo(first: string, second?: string): Promise<string> {
+				return stepResult(`${first}${second}`);
 			}
 		}
 
@@ -470,32 +476,35 @@ test.describe("step decorator", () => {
 	test("should allow any index on methods that can receive extra arguments", async () => {
 		class MyTestClass {
 			@step("Rest [[2]]")
-			async withRest(...values: string[]) {
-				return values;
+			withRest(...values: string[]): Promise<string[]> {
+				return stepResult(values);
 			}
 
 			@step("Destructured rest [[2]]")
-			async withDestructuredRest(...[first]: string[]) {
-				return first;
+			withDestructuredRest(...[first]: string[]): Promise<string> {
+				return stepResult(first);
 			}
 
 			@step("Arguments [[1]]")
-			async withArguments(_first: string) {
-				return arguments.length;
+			withArguments(_first: string): Promise<number> {
+				return stepResult(arguments.length);
 			}
 		}
 
 		const instance = new MyTestClass();
 		await instance.withRest("a", "b", "c");
 		await instance.withDestructuredRest("a", "b", "c");
+		// The cast is needed to pass an extra argument; tsgolint wrongly reports it as unnecessary.
+		// oxlint-disable-next-line typescript/no-unnecessary-type-assertion
 		await (instance.withArguments as (...args: string[]) => Promise<number>).call(instance, "a", "b");
 		expect(collectedSteps).toEqual(["Rest c", "Destructured rest c", "Arguments b"]);
 	});
 
 	test("should parse each description once instead of on every call", async () => {
 		let sourceReads = 0;
-		const rawFn = async function myMethod(value: string): Promise<void> {
+		const rawFn = function myMethod(value: string): Promise<void> {
 			void value;
+			return stepResult();
 		};
 		const source = Function.prototype.toString.call(rawFn);
 		Object.defineProperty(rawFn, "toString", {
@@ -515,7 +524,7 @@ test.describe("step decorator", () => {
 			metadata: {},
 			static: false,
 			private: false,
-		} as ClassMethodDecoratorContext<MyTestClass, typeof rawFn>);
+		});
 		const readsAtDefinition = sourceReads;
 
 		await decorated.call(new MyTestClass(), "a");
@@ -528,8 +537,8 @@ test.describe("step decorator", () => {
 	test("should throw error if nested property does not exist", async () => {
 		class MyTestClass {
 			@step("Value: {{obj.nonExistent}}")
-			async foo(obj: { prop: string }) {
-				return `Value is ${obj.prop}`;
+			foo(obj: { prop: string }): Promise<string> {
+				return stepResult(`Value is ${obj.prop}`);
 			}
 		}
 		const instance = new MyTestClass();
@@ -542,8 +551,8 @@ test.describe("step decorator", () => {
 	test("should handle array placeholders", async () => {
 		class MyTestClass {
 			@step("Array values: [[0]]")
-			async foo(arr: string[]) {
-				return `Value is ${arr.join(",")}`;
+			foo(arr: string[]): Promise<string> {
+				return stepResult(`Value is ${arr.join(",")}`);
 			}
 		}
 		const instance = new MyTestClass();
@@ -554,8 +563,8 @@ test.describe("step decorator", () => {
 	test("should allow index placeholders for destructured parameters", async () => {
 		class MyTestClass {
 			@step("User [[0]]")
-			async foo({ name }: { name: string }) {
-				return name;
+			foo({ name }: { name: string }): Promise<string> {
+				return stepResult(name);
 			}
 		}
 
@@ -568,7 +577,7 @@ test.describe("step decorator", () => {
 	test("should preserve user stack frames when filtering decorator internals", async () => {
 		class MyTestClass {
 			@step("Failure step")
-			async myMethod(): Promise<void> {
+			myMethod(): Promise<void> {
 				const error = new Error("boom");
 				error.stack = [
 					"Error: boom",
@@ -597,7 +606,7 @@ test.describe("step decorator", () => {
 	test("should keep user frames whose filename matches the decorator basename", async () => {
 		class MyTestClass {
 			@step("Failure step")
-			async myMethod(): Promise<void> {
+			myMethod(): Promise<void> {
 				const error = new Error("boom");
 				error.stack = [
 					"Error: boom",
@@ -630,8 +639,8 @@ test.describe("step decorator", () => {
 			}
 
 			@step("Inner step with {{action}}")
-			async inner(action: string): Promise<string> {
-				return `Action: ${action}`;
+			inner(action: string): Promise<string> {
+				return stepResult(`Action: ${action}`);
 			}
 		}
 
@@ -747,7 +756,7 @@ test.describe("step decorator", () => {
 			after: TestStepInfo;
 		}> = [];
 
-		const observeStepContext = async (label: string) => {
+		const observeStepContext = async (label: string): Promise<void> => {
 			const before = getStepInfo();
 
 			started += 1;
@@ -894,8 +903,9 @@ test.describe("step decorator - location tracking", () => {
 	test("should capture location for nested property placeholders", async () => {
 		class MyTestClass {
 			@step("User: {{user.name}}")
-			async login(user: { name: string }): Promise<void> {
+			login(user: { name: string }): Promise<void> {
 				void user; // Suppress unused warning
+				return stepResult();
 			}
 		}
 
@@ -913,8 +923,9 @@ test.describe("step decorator - location tracking", () => {
 	test("should capture location for index placeholders", async () => {
 		class MyTestClass {
 			@step("Value: [[0]]")
-			async doSomething(value: string): Promise<void> {
+			doSomething(value: string): Promise<void> {
 				void value; // Suppress unused warning
+				return stepResult();
 			}
 		}
 
@@ -931,8 +942,8 @@ test.describe("step decorator - location tracking", () => {
 	test("should capture location even without description", async () => {
 		class MyTestClass {
 			@step()
-			async defaultMethod(): Promise<string> {
-				return "result";
+			defaultMethod(): Promise<string> {
+				return stepResult("result");
 			}
 		}
 
@@ -1096,8 +1107,8 @@ test.describe("step decorator - location tracking", () => {
 
 	test("should capture location when step-decorated method calls another class method", async () => {
 		class HelperClass {
-			async doWork(): Promise<string> {
-				return "work done";
+			doWork(): Promise<string> {
+				return stepResult("work done");
 			}
 		}
 

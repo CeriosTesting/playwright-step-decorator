@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { step } from "../src/playwright-step-decorator";
+import { step, stepResult } from "../src/playwright-step-decorator";
 
 import { collectedSteps, setupMockStep } from "./helpers";
 
@@ -10,8 +10,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format null as 'null'", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val: null): Promise<void> {
+			myMethod(val: null): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -23,8 +24,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -36,8 +38,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format a nested placeholder on an undefined parameter as 'undefined'", async () => {
 		class MyTestClass {
 			@step("Value: {{user.name}}")
-			async myMethod(user?: { name: string }): Promise<void> {
+			myMethod(user?: { name: string }): Promise<void> {
 				void user;
+				return stepResult();
 			}
 		}
 
@@ -48,8 +51,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format a nested placeholder on a null parameter as 'null'", async () => {
 		class MyTestClass {
 			@step("Value: {{user.name}}")
-			async myMethod(user: { name: string } | null): Promise<void> {
+			myMethod(user: { name: string } | null): Promise<void> {
 				void user;
+				return stepResult();
 			}
 		}
 
@@ -60,8 +64,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format a deep nested placeholder with a null intermediate property as 'null'", async () => {
 		class MyTestClass {
 			@step("Value: {{user.address.street}}")
-			async myMethod(user: { address: { street: string } | null }): Promise<void> {
+			myMethod(user: { address: { street: string } | null }): Promise<void> {
 				void user;
+				return stepResult();
 			}
 		}
 
@@ -72,8 +77,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should still format a nested placeholder on a nullable parameter when it is filled", async () => {
 		class MyTestClass {
 			@step("Value: {{user.name}}")
-			async myMethod(user?: { name: string } | null): Promise<void> {
+			myMethod(user?: { name: string } | null): Promise<void> {
 				void user;
+				return stepResult();
 			}
 		}
 
@@ -84,8 +90,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format boolean true as 'true'", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val: boolean): Promise<void> {
+			myMethod(val: boolean): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -96,8 +103,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format boolean false as 'false'", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val: boolean): Promise<void> {
+			myMethod(val: boolean): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -108,8 +116,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format bigint as its numeric string", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val: bigint): Promise<void> {
+			myMethod(val: bigint): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -121,12 +130,13 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
-		function myNamedFn() {}
+		function myNamedFn(): void {}
 		// oxlint-disable-next-line typescript-eslint/no-unsafe-argument
 		await new MyTestClass().myMethod(myNamedFn);
 		expect(collectedSteps[0]).toBe("Value: [Function myNamedFn]");
@@ -136,8 +146,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -152,8 +163,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -167,8 +179,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -182,9 +195,10 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should print an object that is used twice instead of marking it circular", async () => {
 		class MyTestClass {
 			@step("{{inObject}} {{inArray}}")
-			async myMethod(inObject: unknown, inArray: unknown): Promise<void> {
+			myMethod(inObject: unknown, inArray: unknown): Promise<void> {
 				void inObject;
 				void inArray;
+				return stepResult();
 			}
 		}
 
@@ -196,8 +210,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should mark a cycle that passes through a shared object", async () => {
 		class MyTestClass {
 			@step("[[0]]")
-			async myMethod(value: unknown): Promise<void> {
+			myMethod(value: unknown): Promise<void> {
 				void value;
+				return stepResult();
 			}
 		}
 
@@ -210,8 +225,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should not hang on a heavily shared object graph", async () => {
 		class MyTestClass {
 			@step("[[0]]")
-			async myMethod(value: unknown): Promise<void> {
+			myMethod(value: unknown): Promise<void> {
 				void value;
+				return stepResult();
 			}
 		}
 
@@ -229,15 +245,16 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should read properties of primitive values and functions", async () => {
 		class MyTestClass {
 			@step("{{text.length}} {{list.length}} {{fn.name}} {{user.name.length}}")
-			async myMethod(text: string, list: string[], fn: () => void, user: { name: string }): Promise<void> {
+			myMethod(text: string, list: string[], fn: () => void, user: { name: string }): Promise<void> {
 				void text;
 				void list;
 				void fn;
 				void user;
+				return stepResult();
 			}
 		}
 
-		function myNamedFn() {}
+		function myNamedFn(): void {}
 		await new MyTestClass().myMethod("abc", ["a", "b"], myNamedFn, { name: "Alice" });
 		expect(collectedSteps[0]).toBe("3 2 myNamedFn 5");
 	});
@@ -245,8 +262,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should reject when a property does not exist on a primitive value", async () => {
 		class MyTestClass {
 			@step("{{text.nope}}")
-			async myMethod(text: string): Promise<void> {
+			myMethod(text: string): Promise<void> {
 				void text;
+				return stepResult();
 			}
 		}
 
@@ -258,10 +276,11 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should cut off long values and say how much was removed", async () => {
 		class MyTestClass {
 			@step("{{text}} | {{list}} | {{short}}")
-			async myMethod(text: string, list: number[], short: string): Promise<void> {
+			myMethod(text: string, list: number[], short: string): Promise<void> {
 				void text;
 				void list;
 				void short;
+				return stepResult();
 			}
 		}
 
@@ -285,10 +304,11 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format Map, Set and RegExp values at the top level", async () => {
 		class MyTestClass {
 			@step("[[0]] | [[1]] | [[2]]")
-			async myMethod(map: unknown, set: unknown, pattern: unknown): Promise<void> {
+			myMethod(map: unknown, set: unknown, pattern: unknown): Promise<void> {
 				void map;
 				void set;
 				void pattern;
+				return stepResult();
 			}
 		}
 
@@ -299,8 +319,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 	test("should format nested Map, Set, RegExp and Error values", async () => {
 		class MyTestClass {
 			@step("[[0]]")
-			async myMethod(value: unknown): Promise<void> {
+			myMethod(value: unknown): Promise<void> {
 				void value;
+				return stepResult();
 			}
 		}
 
@@ -322,8 +343,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -336,8 +358,9 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -350,12 +373,13 @@ test.describe("step decorator - placeholder value formatting", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
-		function myFn() {}
+		function myFn(): void {}
 		// oxlint-disable-next-line typescript-eslint/no-unsafe-argument
 		await new MyTestClass().myMethod({ fn: myFn });
 		expect(collectedSteps[0]).toContain("[Function myFn]");

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { step } from "../src/playwright-step-decorator";
+import { step, stepResult } from "../src/playwright-step-decorator";
 
 import { collectedSteps, setupMockStep } from "./helpers";
 
@@ -10,8 +10,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should show number default when argument is omitted", async () => {
 		class MyTestClass {
 			@step("Count: {{count}}")
-			async myMethod(count = 42): Promise<void> {
+			myMethod(count = 42): Promise<void> {
 				void count;
+				return stepResult();
 			}
 		}
 
@@ -22,8 +23,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should show boolean true default when argument is omitted", async () => {
 		class MyTestClass {
 			@step("Enabled: {{enabled}}")
-			async myMethod(enabled = true): Promise<void> {
+			myMethod(enabled = true): Promise<void> {
 				void enabled;
+				return stepResult();
 			}
 		}
 
@@ -34,8 +36,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should show boolean false default when argument is omitted", async () => {
 		class MyTestClass {
 			@step("Enabled: {{enabled}}")
-			async myMethod(enabled = false): Promise<void> {
+			myMethod(enabled = false): Promise<void> {
 				void enabled;
+				return stepResult();
 			}
 		}
 
@@ -47,8 +50,9 @@ test.describe("step decorator - literal default values", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any = null): Promise<void> {
+			myMethod(val: any = null): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -60,8 +64,9 @@ test.describe("step decorator - literal default values", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any, no-useless-default-assignment
-			async myMethod(val: any = undefined): Promise<void> {
+			myMethod(val: any = undefined): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -73,8 +78,9 @@ test.describe("step decorator - literal default values", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// @ts-expect-error TS2737 -- BigInt literal required to test parseLiteralDefaultValue source parsing
-			async myMethod(val = 42n): Promise<void> {
+			myMethod(val = 42n): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -85,9 +91,10 @@ test.describe("step decorator - literal default values", () => {
 	test("should show empty object and array defaults when the argument is omitted", async () => {
 		class MyTestClass {
 			@step("{{options}} {{items}} {{items.length}}")
-			async myMethod(options: object = {}, items: string[] = []): Promise<void> {
+			myMethod(options: object = {}, items: string[] = []): Promise<void> {
 				void options;
 				void items;
+				return stepResult();
 			}
 		}
 
@@ -98,8 +105,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should print undefined for properties of an omitted empty object default", async () => {
 		class MyTestClass {
 			@step("Timeout {{options.timeout}}, nested {{options.retry.count}}")
-			async myMethod(options: { retry?: { count: number }; timeout?: number } = {}): Promise<void> {
+			myMethod(options: { retry?: { count: number }; timeout?: number } = {}): Promise<void> {
 				void options;
+				return stepResult();
 			}
 		}
 
@@ -111,8 +119,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should still reject for a missing property on a passed object", async () => {
 		class MyTestClass {
 			@step("Timeout {{options.timeout}}")
-			async myMethod(options: { timeout?: number } = {}): Promise<void> {
+			myMethod(options: { timeout?: number } = {}): Promise<void> {
 				void options;
+				return stepResult();
 			}
 		}
 
@@ -124,9 +133,10 @@ test.describe("step decorator - literal default values", () => {
 	test("should show non-empty object and array defaults when the argument is omitted", async () => {
 		class MyTestClass {
 			@step("{{options}} | {{items}}")
-			async myMethod(options: object = { a: 1, b: "two" }, items: unknown[] = [1, "two", null]): Promise<void> {
+			myMethod(options: object = { a: 1, b: "two" }, items: unknown[] = [1, "two", null]): Promise<void> {
 				void options;
 				void items;
+				return stepResult();
 			}
 		}
 
@@ -137,12 +147,13 @@ test.describe("step decorator - literal default values", () => {
 	test("should read properties and indexes of omitted object and array defaults", async () => {
 		class MyTestClass {
 			@step("{{options.timeout}} {{options.retry.count}} {{options.tags.1}} {{options.tags.length}} {{list.0.id}}")
-			async myMethod(
+			myMethod(
 				options: object = { timeout: 5, retry: { count: 2 }, tags: ["a", "b"] },
 				list: object[] = [{ id: 7 }]
 			): Promise<void> {
 				void options;
 				void list;
+				return stepResult();
 			}
 		}
 
@@ -153,8 +164,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should print undefined for a property missing from an omitted object default", async () => {
 		class MyTestClass {
 			@step("{{options.timeout}} {{options.retry}} {{options.retry.count}}")
-			async myMethod(options: { retry?: { count: number }; timeout?: number } = { timeout: 5 }): Promise<void> {
+			myMethod(options: { retry?: { count: number }; timeout?: number } = { timeout: 5 }): Promise<void> {
 				void options;
+				return stepResult();
 			}
 		}
 
@@ -165,8 +177,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should prefer a passed argument over an object default", async () => {
 		class MyTestClass {
 			@step("{{options.timeout}}")
-			async myMethod(options: { timeout?: number } = { timeout: 5 }): Promise<void> {
+			myMethod(options: { timeout?: number } = { timeout: 5 }): Promise<void> {
 				void options;
+				return stepResult();
 			}
 		}
 
@@ -181,7 +194,7 @@ test.describe("step decorator - literal default values", () => {
 	test("should parse every literal form inside object defaults", async () => {
 		class MyTestClass {
 			@step("{{val}}")
-			async myMethod(
+			myMethod(
 				val: object = {
 					// A comment, with: punctuation
 					plain: 1 /* another */,
@@ -201,6 +214,7 @@ test.describe("step decorator - literal default values", () => {
 				}
 			): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -225,59 +239,69 @@ test.describe("step decorator - literal default values", () => {
 		const shared = 1;
 		const key = "computed";
 		const rest = { a: 1 };
-		const reject = (run: () => Promise<void>) =>
+		const reject = (run: () => Promise<void>): Promise<void> =>
 			expect(run()).rejects.toThrow("Only literal default values can be printed when the argument is omitted");
 
 		class MyTestClass {
 			@step("{{val}}")
-			async variable(val: object = { a: shared }): Promise<void> {
+			variable(val: object = { a: shared }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async shorthand(val: object = { shared }): Promise<void> {
+			shorthand(val: object = { shared }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async spread(val: object = { ...rest }): Promise<void> {
+			spread(val: object = { ...rest }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async computed(val: object = { [key]: 1 }): Promise<void> {
+			computed(val: object = { [key]: 1 }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async method(val: object = { run() {} }): Promise<void> {
+			method(val: object = { run() {} }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async callValue(val: object = { a: String(1) }): Promise<void> {
+			callValue(val: object = { a: String(1) }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async arrayVariable(val: unknown[] = [shared]): Promise<void> {
+			arrayVariable(val: unknown[] = [shared]): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
 			// oxlint-disable-next-line unicorn/no-useless-spread -- the spread syntax is what this case covers
-			async arraySpread(val: unknown[] = [...[1]]): Promise<void> {
+			arraySpread(val: unknown[] = [...[1]]): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async arrayMethodCall(val: number[] = [1, 2].map(n => n)): Promise<void> {
+			arrayMethodCall(val: number[] = [1, 2].map(n => n)): Promise<void> {
 				void val;
+				return stepResult();
 			}
 
 			@step("{{val}}")
-			async nestedVariable(val: object = { a: { b: [shared] } }): Promise<void> {
+			nestedVariable(val: object = { a: { b: [shared] } }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -301,8 +325,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should not treat __proto__ in an object default as a property", async () => {
 		class MyTestClass {
 			@step("{{val}}")
-			async myMethod(val: object = { __proto__: { polluted: true } }): Promise<void> {
+			myMethod(val: object = { __proto__: { polluted: true } }): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -328,7 +353,7 @@ test.describe("step decorator - literal default values", () => {
 			metadata: {},
 			static: false,
 			private: false,
-		} as ClassMethodDecoratorContext<MyTestClass, typeof rawFn>);
+		});
 
 		await expect(decorated.call(new MyTestClass())).rejects.toThrow(
 			"Only literal default values can be printed when the argument is omitted"
@@ -340,8 +365,9 @@ test.describe("step decorator - literal default values", () => {
 			// The default value source contains the two chars \n which parseLiteralDefaultValue
 			// should decode into an actual newline character.
 			@step("Value: {{val}}")
-			async myMethod(val = "hello\nworld"): Promise<void> {
+			myMethod(val = "hello\nworld"): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -352,8 +378,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should resolve \\uXXXX escape sequence in string default", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val = "\u0041"): Promise<void> {
+			myMethod(val = "\u0041"): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -364,8 +391,9 @@ test.describe("step decorator - literal default values", () => {
 	test("should resolve \\xXX escape sequence in string default", async () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
-			async myMethod(val = "\x41"): Promise<void> {
+			myMethod(val = "\x41"): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 

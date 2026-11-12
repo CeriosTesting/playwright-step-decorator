@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { step } from "../src/playwright-step-decorator";
+import { step, stepResult } from "../src/playwright-step-decorator";
 
 import { collectedSteps, setupMockStep } from "./helpers";
 
@@ -10,7 +10,7 @@ test.describe("step decorator - parameter parsing", () => {
 	test("should match parameters that follow line comments", async () => {
 		class MyTestClass {
 			@step("{{first}} / {{second}}")
-			async myMethod(
+			myMethod(
 				// The first value
 				first: string,
 				// The second value, with a comma and a ) in this comment
@@ -18,6 +18,7 @@ test.describe("step decorator - parameter parsing", () => {
 			): Promise<void> {
 				void first;
 				void second;
+				return stepResult();
 			}
 		}
 
@@ -28,7 +29,7 @@ test.describe("step decorator - parameter parsing", () => {
 	test("should match parameters with block comments and trailing line comments", async () => {
 		class MyTestClass {
 			@step("{{first}} / {{second}} / {{third}}")
-			async myMethod(
+			myMethod(
 				first /* before the type */ : string,
 				/* before the name */ second: string, // trailing
 				third: string
@@ -36,6 +37,7 @@ test.describe("step decorator - parameter parsing", () => {
 				void first;
 				void second;
 				void third;
+				return stepResult();
 			}
 		}
 
@@ -46,8 +48,9 @@ test.describe("step decorator - parameter parsing", () => {
 	test("should keep comment-like text and repeated spaces in a string default", async () => {
 		class MyTestClass {
 			@step("{{val}}")
-			async myMethod(val = "a  // b /* c */"): Promise<void> {
+			myMethod(val = "a  // b /* c */"): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 
@@ -58,10 +61,11 @@ test.describe("step decorator - parameter parsing", () => {
 	test("should match parameter names with non-ASCII letters", async () => {
 		class MyTestClass {
 			@step("{{naïve}} / {{名前}} / {{$a_1}}")
-			async myMethod(naïve: string, 名前: string, $a_1: string): Promise<void> {
+			myMethod(naïve: string, 名前: string, $a_1: string): Promise<void> {
 				void naïve;
 				void 名前;
 				void $a_1;
+				return stepResult();
 			}
 		}
 
@@ -72,13 +76,21 @@ test.describe("step decorator - parameter parsing", () => {
 	test("should print hexadecimal, octal, binary and leading-dot number defaults", async () => {
 		class MyTestClass {
 			@step("{{hex}} {{octal}} {{binary}} {{fraction}} {{negative}} {{exponent}}")
-			async myMethod(hex = 0x10, octal = 0o7, binary = 0b11, fraction = 0.5, negative = -0x10, exponent = 1e3) {
+			myMethod(
+				hex = 0x10,
+				octal = 0o7,
+				binary = 0b11,
+				fraction = 0.5,
+				negative = -0x10,
+				exponent = 1e3
+			): Promise<void> {
 				void hex;
 				void octal;
 				void binary;
 				void fraction;
 				void negative;
 				void exponent;
+				return stepResult();
 			}
 		}
 
@@ -105,7 +117,7 @@ test.describe("step decorator - parameter parsing", () => {
 			metadata: {},
 			static: false,
 			private: false,
-		} as ClassMethodDecoratorContext<MyTestClass, typeof rawFn>);
+		});
 
 		await decorated.call(new MyTestClass());
 		expect(collectedSteps[0]).toBe("15000 0.5 65535");

@@ -28,62 +28,72 @@ export class Page {
 	async onlyOptions(): Promise<void> {}
 
 	@step("Named {{value}}")
-	async named(value: string): Promise<void> {
+	named(value: string): Promise<void> {
 		void value;
+		return stepResult();
 	}
 
 	@step("Literal __text__")
 	async literal(): Promise<void> {}
 
 	@step("Selector __key__", { values: { key: user => user.name } })
-	async selector(user: User): Promise<void> {
+	selector(user: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	@step("Two __key__ __other__", { values: { key: user => user.name, other: (_user, count) => count.toFixed() } })
-	async twoSelectors(user: User, count: number): Promise<void> {
+	twoSelectors(user: User, count: number): Promise<void> {
 		void user;
 		void count;
+		return stepResult();
 	}
 
 	@step("Optional __key__", { values: { key: user => user?.name } })
-	async optional(user?: User): Promise<void> {
+	optional(user?: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	@step("Static __key__", { values: { key: user => user.name } })
-	static async inStatic(user: User): Promise<void> {
+	static inStatic(user: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	// @ts-expect-error -- __other__ has no selector
 	@step("Missing __key__ __other__", { values: { key: user => user.name } })
-	async missingSelector(user: User): Promise<void> {
+	missingSelector(user: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	// @ts-expect-error -- extra is not a placeholder in the description
 	@step("Extra __key__", { values: { key: user => user.name, extra: () => 1 } })
-	async extraSelector(user: User): Promise<void> {
+	extraSelector(user: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	// @ts-expect-error -- nope does not exist on User
 	@step("Property __key__", { values: { key: user => user.nope } })
-	async badProperty(user: User): Promise<void> {
+	badProperty(user: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	// @ts-expect-error -- the first parameter is a User, not a string
 	@step("Type __key__", { values: { key: (user: string) => user } })
-	async badParameterType(user: User): Promise<void> {
+	badParameterType(user: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	// @ts-expect-error -- user may be undefined, so the selector has to handle it
 	@step("Unsafe __key__", { values: { key: user => user.name } })
-	async unsafeOptional(user?: User): Promise<void> {
+	unsafeOptional(user?: User): Promise<void> {
 		void user;
+		return stepResult();
 	}
 
 	// @ts-expect-error -- a decorated method must return a promise

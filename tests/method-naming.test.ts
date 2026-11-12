@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { step } from "../src/playwright-step-decorator";
+import { step, stepResult } from "../src/playwright-step-decorator";
 
 import { collectedSteps, setupMockStep } from "./helpers";
 
@@ -10,8 +10,8 @@ test.describe("step decorator - method naming and this", () => {
 	test("should use the class name for static methods", async () => {
 		class MyTestClass {
 			@step()
-			static async create(): Promise<string> {
-				return "created";
+			static create(): Promise<string> {
+				return stepResult("created");
 			}
 		}
 
@@ -55,8 +55,8 @@ test.describe("step decorator - method naming and this", () => {
 		const run = Symbol("run");
 		class MyTestClass {
 			@step("Run with {{value}}")
-			async runStep(value: string): Promise<string> {
-				return value;
+			runStep(value: string): Promise<string> {
+				return stepResult(value);
 			}
 
 			[run](value: string): Promise<string> {
@@ -71,13 +71,13 @@ test.describe("step decorator - method naming and this", () => {
 	test("should run a detached method that does not use this", async () => {
 		class MyTestClass {
 			@step("Value {{value}}")
-			async withDescription(value: string): Promise<string> {
-				return value;
+			withDescription(value: string): Promise<string> {
+				return stepResult(value);
 			}
 
 			@step()
-			async withoutDescription(): Promise<string> {
-				return "done";
+			withoutDescription(): Promise<string> {
+				return stepResult("done");
 			}
 		}
 
@@ -93,8 +93,8 @@ test.describe("step decorator - method naming and this", () => {
 			private readonly value = "x";
 
 			@step("Read value")
-			async read(): Promise<string> {
-				return this.value;
+			read(): Promise<string> {
+				return stepResult(this.value);
 			}
 		}
 

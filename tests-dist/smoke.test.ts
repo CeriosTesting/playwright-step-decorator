@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 type Package = typeof import("../src");
 type RecordedStep = { location?: { file: string }; title: string };
 
-const distPath = (file: string) => resolve(__dirname, "..", "dist", file);
+const distPath = (file: string): string => resolve(__dirname, "..", "dist", file);
 const loadCjs = (): Package => createRequire(__filename)(distPath("index.cjs")) as Package;
 const loadEsm = (): Promise<Package> => import(pathToFileURL(distPath("index.mjs")).href) as Promise<Package>;
 
@@ -22,7 +22,7 @@ const recordedSteps: RecordedStep[] = [];
 const realStep = test.step;
 test.beforeEach(() => {
 	recordedSteps.length = 0;
-	const recordingStep = (title: string, body: never, options?: { location?: { file: string } }) => {
+	const recordingStep = (title: string, body: never, options?: { location?: { file: string } }): unknown => {
 		recordedSteps.push({ title, location: options?.location });
 		return (realStep as (...args: unknown[]) => unknown)(title, body, options);
 	};
@@ -35,12 +35,12 @@ test.afterEach(() => {
 for (const [name, load] of builds) {
 	test.describe(`${name} build`, () => {
 		test("reports a step with the formatted title and the caller's location", async () => {
-			const { step } = await load();
+			const { step, stepResult } = await load();
 			class Page {
 				@step("Login as {{user.name}} ([[1]], __role__)", { values: { role: (_user, role) => role.toUpperCase() } })
-				async login(user: { name: string }, role: string): Promise<string> {
+				login(user: { name: string }, role: string): Promise<string> {
 					void role;
-					return user.name;
+					return stepResult(user.name);
 				}
 			}
 
@@ -74,7 +74,7 @@ for (const [name, load] of builds) {
 			const { step } = await load();
 			class Page {
 				@step("Fail")
-				async fail(): Promise<void> {
+				fail(): Promise<void> {
 					throw new Error("boom");
 				}
 			}
@@ -105,14 +105,14 @@ test("shares the step context between the CommonJS and ES module builds", async 
 
 	class FromCjs {
 		@cjs.step("Started by CommonJS")
-		async run(): Promise<boolean> {
-			return esm.getStepInfo() !== undefined;
+		run(): Promise<boolean> {
+			return cjs.stepResult(esm.getStepInfo() !== undefined);
 		}
 	}
 	class FromEsm {
 		@esm.step("Started by ES module")
-		async run(): Promise<boolean> {
-			return cjs.getStepInfo() !== undefined;
+		run(): Promise<boolean> {
+			return esm.stepResult(cjs.getStepInfo() !== undefined);
 		}
 	}
 

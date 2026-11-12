@@ -10,7 +10,7 @@ test.describe("step decorator - error propagation", () => {
 	test("should propagate a thrown string unchanged", async () => {
 		class MyTestClass {
 			@step("Failing step")
-			async myMethod(): Promise<void> {
+			myMethod(): Promise<void> {
 				throw "a string error";
 			}
 		}
@@ -28,7 +28,7 @@ test.describe("step decorator - error propagation", () => {
 	test("should propagate a thrown number unchanged", async () => {
 		class MyTestClass {
 			@step("Failing step")
-			async myMethod(): Promise<void> {
+			myMethod(): Promise<void> {
 				throw 42;
 			}
 		}
@@ -46,7 +46,7 @@ test.describe("step decorator - error propagation", () => {
 	test("should propagate an Error with undefined stack without crashing the decorator", async () => {
 		class MyTestClass {
 			@step("Failing step")
-			async myMethod(): Promise<void> {
+			myMethod(): Promise<void> {
 				const error = new Error("boom");
 				Object.defineProperty(error, "stack", { value: undefined, configurable: true, writable: true });
 				throw error;

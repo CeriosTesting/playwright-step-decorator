@@ -1,7 +1,24 @@
 {
-	"ignorePatterns": ["tests-types"],
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"ignorePatterns": ["dist", "temp"],
+	"options": {
+		"typeAware": true
+	},
+	"plugins": ["promise", "eslint", "typescript"],
 	"rules": {
-		"typescript/no-unused-vars": "warn",
-		"typescript/no-explicit-any": "warn"
+		"eslint/complexity": ["error", { "max": 15 }],
+		"eslint/eqeqeq": "error",
+		"eslint/no-var": "error",
+		"eslint/prefer-const": "error",
+		"promise/catch-or-return": "error",
+		"promise/no-return-in-finally": "error",
+		"promise/param-names": "error",
+		"typescript/explicit-function-return-type": "error",
+		"typescript/no-deprecated": "warn",
+		"typescript/no-explicit-any": "error",
+		"typescript/no-misused-promises": "error",
+		"typescript/no-unnecessary-type-assertion": "error",
+		"typescript/prefer-nullish-coalescing": "error",
+		"typescript/require-await": "error"
 	}
 }

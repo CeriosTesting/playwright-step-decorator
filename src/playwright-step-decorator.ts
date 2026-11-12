@@ -93,7 +93,7 @@ let decoratorModulePath: string | undefined;
 export function stepResult(): Promise<void>;
 export function stepResult<T>(factory: () => T): Promise<Awaited<T>>;
 export function stepResult<T>(value: NonFunctionValue<T>): Promise<Awaited<T>>;
-export function stepResult(valueOrFactory?: unknown) {
+export function stepResult(valueOrFactory?: unknown): Promise<unknown> {
 	if (typeof valueOrFactory === "function") {
 		return Promise.resolve().then(valueOrFactory as () => unknown);
 	}
@@ -172,20 +172,23 @@ export function step<const Description extends string, Args extends unknown[]>(
 	options: StepOptionsWithValues<Description, Args>
 ): StepDecorator<Args>;
 export function step(description: string, options?: StepOptions): GenericStepDecorator;
-export function step(descriptionOrOptions?: StepDescriptionOrOptions, options?: RuntimeStepOptions) {
+export function step(
+	descriptionOrOptions?: StepDescriptionOrOptions,
+	options?: RuntimeStepOptions
+): GenericStepDecorator {
 	const description = typeof descriptionOrOptions === "string" ? descriptionOrOptions : undefined;
 	const resolvedOptions = typeof descriptionOrOptions === "string" ? options : (descriptionOrOptions ?? options);
 
 	return createStepDecorator(description, resolvedOptions);
 }
 
-function createStepDecorator(description?: string, options?: RuntimeStepOptions) {
+function createStepDecorator(description?: string, options?: RuntimeStepOptions): GenericStepDecorator {
 	const { values, ...stepOptions } = options ?? {};
 
-	return function <This extends { constructor: { name: string } }, Args extends unknown[], ReturnType>(
+	return function <This, Args extends unknown[], ReturnType>(
 		target: StepMethod<This, Args, ReturnType>,
 		context: ClassMethodDecoratorContext<This, StepMethod<This, Args, ReturnType>>
-	) {
+	): StepMethod<This, Args, ReturnType> {
 		// Everything that depends only on the source runs here, once, so a broken description fails when the class is
 		// defined. The class name isn't available yet, so these errors name only the method.
 		const definitionName = String(context.name);
@@ -287,7 +290,7 @@ function captureCallSiteLocation(): { file: string; line: number; column: number
 }
 
 function extractStackFrameLocation(stackLine: string): { file: string; line: number; column: number } | undefined {
-	const match = stackLine.match(/\((.+):(\d+):(\d+)\)$/) || stackLine.match(/at\s+(?:async\s+)?(.+):(\d+):(\d+)$/);
+	const match = stackLine.match(/\((.+):(\d+):(\d+)\)$/) ?? stackLine.match(/at\s+(?:async\s+)?(.+):(\d+):(\d+)$/);
 	if (!match) {
 		return undefined;
 	}
@@ -387,7 +390,7 @@ function tokenizeDescription(description: string, hasValues: boolean): Placehold
 		}
 	}
 
-	const overlapsValueToken = (start: number, end: number) =>
+	const overlapsValueToken = (start: number, end: number): boolean =>
 		valueTokens.some(token => start < token.end && token.start < end);
 
 	const argumentTokens: PlaceholderToken[] = [];
@@ -721,6 +724,20 @@ function splitLiteralMembers(source: string): string[] | undefined {
 	return members.includes("") ? undefined : members;
 }
 
+const SIMPLE_STRING_ESCAPES: Readonly<Record<string, string>> = {
+	"'": "'",
+	'"': '"',
+	"\\": "\\",
+	b: "\b",
+	f: "\f",
+	n: "\n",
+	r: "\r",
+	t: "\t",
+	v: "\v",
+	0: "\0",
+};
+const HEX_STRING_ESCAPE_LENGTHS: Readonly<Record<string, number>> = { u: 4, x: 2 };
+
 function parseQuotedStringLiteral(source: string): string | undefined {
 	if (source.length < 2) {
 		return undefined;
@@ -744,58 +761,39 @@ function parseQuotedStringLiteral(source: string): string | undefined {
 			return undefined;
 		}
 
-		const escape = source[i];
-		switch (escape) {
-			case "'":
-			case '"':
-			case "\\":
-				result += escape;
-				break;
-			case "b":
-				result += "\b";
-				break;
-			case "f":
-				result += "\f";
-				break;
-			case "n":
-				result += "\n";
-				break;
-			case "r":
-				result += "\r";
-				break;
-			case "t":
-				result += "\t";
-				break;
-			case "v":
-				result += "\v";
-				break;
-			case "0":
-				result += "\0";
-				break;
-			case "u": {
-				const unicodeValue = source.slice(i + 1, i + 5);
-				if (!/^[0-9A-Fa-f]{4}$/u.test(unicodeValue)) {
-					return undefined;
-				}
-				result += String.fromCodePoint(parseInt(unicodeValue, 16));
-				i += 4;
-				break;
-			}
-			case "x": {
-				const hexValue = source.slice(i + 1, i + 3);
-				if (!/^[0-9A-Fa-f]{2}$/u.test(hexValue)) {
-					return undefined;
-				}
-				result += String.fromCodePoint(parseInt(hexValue, 16));
-				i += 2;
-				break;
-			}
-			default:
-				return undefined;
+		const escape = parseStringEscape(source, i);
+		if (!escape) {
+			return undefined;
 		}
+		result += escape.value;
+		i += escape.extraLength;
 	}
 
 	return result;
+}
+
+/**
+ * Parses the escape sequence whose character after the backslash is at `index`.
+ *
+ * @returns The escaped value and how many characters it uses beyond `index`, or `undefined` if it isn't supported.
+ */
+function parseStringEscape(source: string, index: number): { extraLength: number; value: string } | undefined {
+	const escape = source[index];
+	const simple = SIMPLE_STRING_ESCAPES[escape];
+	if (simple !== undefined) {
+		return { extraLength: 0, value: simple };
+	}
+
+	const length = HEX_STRING_ESCAPE_LENGTHS[escape];
+	if (length === undefined) {
+		return undefined;
+	}
+
+	const hexValue = source.slice(index + 1, index + 1 + length);
+	if (hexValue.length !== length || !/^[0-9A-Fa-f]+$/u.test(hexValue)) {
+		return undefined;
+	}
+	return { extraLength: length, value: String.fromCodePoint(parseInt(hexValue, 16)) };
 }
 
 /**
@@ -1015,6 +1013,17 @@ function truncatePlaceholderValue(value: string): string {
 	return `${value.slice(0, MAX_PLACEHOLDER_LENGTH)}… (${value.length - MAX_PLACEHOLDER_LENGTH} more characters)`;
 }
 
+function resolveIndexPlaceholder(methodName: string, index: number, args: unknown[]): unknown {
+	if (isNaN(index) || index < 0 || index >= args.length) {
+		throw new Error(
+			`Parameter index '${index}' is out of bounds in method '${methodName}'. ` +
+				`This method received ${args.length} argument(s), but the @step decorator references index ${index}. ` +
+				`Please check your @step decorator placeholders.`
+		);
+	}
+	return args[index];
+}
+
 function resolvePlaceholderToken(
 	methodName: string,
 	token: PlaceholderToken,
@@ -1023,15 +1032,7 @@ function resolvePlaceholderToken(
 	values: Record<string, (...args: unknown[]) => unknown>
 ): unknown {
 	if (token.kind === "index") {
-		const index = token.index;
-		if (isNaN(index) || index < 0 || index >= args.length) {
-			throw new Error(
-				`Parameter index '${index}' is out of bounds in method '${methodName}'. ` +
-					`This method received ${args.length} argument(s), but the @step decorator references index ${index}. ` +
-					`Please check your @step decorator placeholders.`
-			);
-		}
-		return args[index];
+		return resolveIndexPlaceholder(methodName, token.index, args);
 	}
 
 	if (token.kind === "value") {

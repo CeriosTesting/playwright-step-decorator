@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { step } from "../src/playwright-step-decorator";
+import { step, stepResult } from "../src/playwright-step-decorator";
 
 import { collectedSteps, setupMockStep } from "./helpers";
 
@@ -10,8 +10,9 @@ test.describe("step decorator - description formatting edge cases", () => {
 	test("should replace a repeated placeholder multiple times in the same description", async () => {
 		class MyTestClass {
 			@step("{{x}} and {{x}}")
-			async myMethod(x: string): Promise<void> {
+			myMethod(x: string): Promise<void> {
 				void x;
+				return stepResult();
 			}
 		}
 
@@ -22,8 +23,9 @@ test.describe("step decorator - description formatting edge cases", () => {
 	test("should format rest parameter as '[]' when called with zero variadic arguments", async () => {
 		class MyTestClass {
 			@step("Items: {{items}}")
-			async myMethod(...items: string[]): Promise<void> {
+			myMethod(...items: string[]): Promise<void> {
 				void items;
+				return stepResult();
 			}
 		}
 
@@ -35,8 +37,9 @@ test.describe("step decorator - description formatting edge cases", () => {
 		class MyTestClass {
 			@step("Value: {{val}}")
 			// oxlint-disable-next-line typescript-eslint/no-explicit-any
-			async myMethod(val: any): Promise<void> {
+			myMethod(val: any): Promise<void> {
 				void val;
+				return stepResult();
 			}
 		}
 

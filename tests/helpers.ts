@@ -14,22 +14,24 @@ type MockStepInfo = {
 	skip: TestStepInfo["skip"];
 };
 
-export const resetCollected = () => {
+export const resetCollected = (): void => {
 	collectedSteps.length = 0;
 	collectedLocations.length = 0;
 	collectedStepOptions.length = 0;
 	nextMockStepId = 1;
 };
 
-export const createDeferred = <T = void>() => {
-	let resolve!: (value: T | PromiseLike<T>) => void;
-	const promise = new Promise<T>(resolver => {
-		resolve = resolver;
+export type Deferred<T> = { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void };
+
+export const createDeferred = <T = void>(): Deferred<T> => {
+	let resolveDeferred!: Deferred<T>["resolve"];
+	const promise = new Promise<T>(resolve => {
+		resolveDeferred = resolve;
 	});
-	return { promise, resolve };
+	return { promise, resolve: resolveDeferred };
 };
 
-export const withMockedErrorStack = async (stack: string, action: () => Promise<void>) => {
+export const withMockedErrorStack = async (stack: string, action: () => Promise<void>): Promise<void> => {
 	const originalError = globalThis.Error;
 	class MockError extends originalError {
 		override stack: string;
@@ -61,7 +63,7 @@ export const mockTestStep = async (
 	desc: string,
 	fn: (step: TestStepInfo) => Promise<unknown>,
 	options?: MockStepOptions
-) => {
+): Promise<unknown> => {
 	collectedSteps.push(desc);
 	collectedLocations.push(options?.location);
 	collectedStepOptions.push(options ? { ...options } : undefined);
@@ -73,7 +75,7 @@ export const mockTestStep = async (
 	return await fn(stepInfo as unknown as TestStepInfo);
 };
 
-export const setupMockStep = () => {
+export const setupMockStep = (): void => {
 	let originalStep: typeof test.step;
 
 	test.beforeAll(() => {

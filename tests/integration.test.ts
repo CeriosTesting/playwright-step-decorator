@@ -4,18 +4,20 @@ import { getStepInfo, step, stepResult } from "../src";
 
 import { MenuPom } from "./pages/menu-page";
 
-const createDeferred = <T = void>() => {
-	let resolve!: (value: T | PromiseLike<T>) => void;
-	const promise = new Promise<T>(resolver => {
-		resolve = resolver;
+type Deferred<T> = { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void };
+
+const createDeferred = <T = void>(): Deferred<T> => {
+	let resolveDeferred!: Deferred<T>["resolve"];
+	const promise = new Promise<T>(resolve => {
+		resolveDeferred = resolve;
 	});
-	return { promise, resolve };
+	return { promise, resolve: resolveDeferred };
 };
 
 test("Happy flow", async ({ page }) => {
 	const menuPage = new MenuPom(page);
 
-	const action = async () => {
+	const action = async (): Promise<void> => {
 		await page.goto("https://playwright.dev/");
 		await Promise.all([
 			menuPage.assertNavbarItems(["Docs", "API", "Node.js", "Community"]),
@@ -34,7 +36,7 @@ test("keeps step context isolated for concurrent calls on the same instance", as
 	let recorded = 0;
 	const observations: Array<{ label: string; before: object; after: object }> = [];
 
-	const observeStepContext = async (label: string, getCurrentStep: () => object) => {
+	const observeStepContext = async (label: string, getCurrentStep: () => object): Promise<void> => {
 		const before = getCurrentStep();
 
 		started += 1;
